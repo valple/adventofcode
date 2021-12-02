@@ -24,3 +24,46 @@
     (mapcar #'+ x y z)))
 
 (defvar *result2* (count-depth-increases (creats-3sum-depths *depths*)))
+
+;; Day 2
+;;
+;; P1
+
+(defun read-commands ()
+  (let ((x (uiop:read-file-lines "d2commands.txt")))
+    (mapcar #'uiop:split-string x)))
+
+(defvar *commands* (read-commands))
+
+(defun parse-commands (commands)
+  (let ((depth 0) (horiz 0))
+    (dolist (k commands)
+      (let ((str (car k)) (nr (parse-integer (car (cdr k)))))
+        (cond
+          ((string= str "forward")
+           (setf horiz (+ horiz nr)))
+          ((string= str "down")
+           (setf depth (+ depth nr)))
+          ((string= str "up")
+           (setf depth (- depth nr))))))
+    (* depth horiz)))
+
+(defvar *result3* (parse-commands *commands*))
+
+;; P4
+;;with aim
+(defun parse-commands2 (commands)
+  (let ((depth 0) (horiz 0) (aim 0))
+    (dolist (k commands)
+      (let ((str (car k)) (nr (parse-integer (car (cdr k)))))
+        (cond
+          ((string= str "forward")
+           (progn (setf horiz (+ horiz nr))
+                  (setf depth (+ depth (* aim nr)))))
+          ((string= str "down")
+           (setf aim (+ aim nr)))
+          ((string= str "up")
+           (setf aim (- aim nr))))))
+    (* depth horiz)))
+
+(defvar *result4* (parse-commands2 *commands*))
