@@ -101,10 +101,13 @@
 ;; P6
 ;;
 
+;;reduce for given index
 (defun oxyco2-red (bits i nr)
   (let* ((ilist (map 'list #'(lambda (x) (nth i x)) bits))
-         (mcv (if (>= (count 1 ilist) (/ (list-length ilist) 2)) nr (abs (- nr 1)))))
-    (remove-if-not #'(lambda (x) (= mcv (nth i x))) bits)))
+         (mcv (if (>= (count 1 ilist)
+                      (/ (list-length ilist) 2)) nr (abs (- nr 1)))))
+    (remove-if-not #'(lambda (x) (= mcv (nth i x)))
+                   bits)))
 
 (defun oxyco2 (bits nr)
   (let ((res bits))
@@ -118,3 +121,129 @@
      (int-from-bitlist (first (oxyco2 bits 0)))))
 
 (defparameter *result6* (life-support (read-bits)))
+
+;; Day 4
+;;
+;; P7
+
+(defun read-bingo-game (file)
+  (let* ((input (uiop:read-file-lines file))
+         (numbers (car input))
+         (inputs (cdr input)))
+    (make-bingo-game
+     :inputs (mapcar #'parse-integer (uiop:split-string numbers :separator ","))
+     :boards (parse-bingos inputs nil nil))))
+
+(defun trim-spaces-parse-ints (str)
+  (mapcar #'parse-integer
+          (remove-if #'uiop:emptyp (uiop:split-string str :separator " "))))
+
+(defun parse-bingos (inputs current bingos)
+  (let ((line (car inputs))
+        (lines (cdr inputs)))
+    (if inputs
+        (if (uiop:emptyp line)
+            (if current
+                (parse-bingos lines nil
+                              (append bingos (list (make-bingo current))))
+                (parse-bingos lines nil bingos))
+            (parse-bingos
+             lines
+             (append current
+                     (list (trim-spaces-parse-ints line)))
+             bingos))
+        (if current
+            (append bingos (list (make-bingo current)))
+            bingos))))
+
+(defstruct bingo-game
+  inputs
+  boards)
+
+(defclass bingo ()
+  ((board :accessor board
+          :initarg :board
+          :type int
+          :documentation "5x5 matrix of numbers")
+   (marked :accessor marked
+           :initarg marked
+           :initform (make-array '(5 5) :initial-element -1)
+           :type int
+           :documentation "Empty 5x5 matrix that gets filled up"
+           )))
+
+(defun make-bingo (rows)
+  (make-instance 'bingo
+                 :board (make-array (list (list-length rows)
+                                          (list-length (first rows))) :initial-contents rows)))
+
+(defun in-2darray (board nr)
+  (destructuring-bind (n m) (array-dimensions board)
+    (loop for i below n do
+          (loop for j below m do
+                (if (eq (aref board i j) nr)
+                    (return-from in-2darray (list i j)))))))
+
+(defun ith-row (arr i)
+  (let ((n (array-dimension arr 1)))
+    (loop for j below n
+          collect (aref arr i j) into row
+          :finally (return (make-array n :initial-contents row)))))
+
+
+(defun ith-col (arr i)
+  (let ((n (array-dimension arr 0)))
+    (loop for j below n
+          collect (aref arr j i) into row
+          :finally (return (make-array n :initial-contents row)))))
+
+(defun entry-sum-2d (board)
+   (destructuring-bind (n m) (array-dimensions board)
+    (loop for i below n
+          sum (loop for j below m
+                sum (if (aref board i j) (aref board i j) 0)))))
+
+
+(defmethod mark ((b bingo) (n integer))
+  (let ((coord (in-2darray (board b) n)))
+    (if coord
+        (let ((i (first coord))
+              (j (second coord)))
+          (progn
+            (setf (aref (board b) i j) nil)
+            (setf (aref (marked b) i j) n))
+            (if (and (find -1 (ith-row (marked b) i))
+                    (find -1 (ith-col (marked b) j)))
+                nil
+                (* n (entry-sum-2d (board b))))))))
+
+(defparameter *testgame* (read-bingo-game "testbingo.txt"))
+
+(defun play-bingo (game)
+  (let ((result nil))
+    (loop for n in (bingo-game-inputs game) do
+      (loop for b in (bingo-game-boards game) do
+                (setf result (mark b n))
+                when result
+                  do (loop-finish)
+                :finally (return result))
+          when result
+            do (loop-finish)
+          :finally (return result))))
+
+(defparameter *result7* (play-bingo (read-bingo-game "bingo.txt")))
+
+;; P8
+
+(defun play-loser-bingo (game)
+  (let ((result nil))
+    (loop for n in (bingo-game-inputs game) do
+        (dolist (b (bingo-game-boards game))
+          (progn
+            (setf result (mark b n))
+            (if result
+                (if (> (list-length (bingo-game-boards game)) 1)
+                    (setf (bingo-game-boards game) (remove b (bingo-game-boards game)))
+                    (return-from play-loser-bingo result))))))))
+
+(defparameter *result8* (play-loser-bingo (read-bingo-game "bingo.txt")))
