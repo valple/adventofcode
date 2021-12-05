@@ -247,3 +247,80 @@
                     (return-from play-loser-bingo result))))))))
 
 (defparameter *result8* (play-loser-bingo (read-bingo-game "bingo.txt")))
+
+;; Day 5
+;;
+;; P9
+
+(defstruct point
+  x
+  y
+  (marks 0))
+
+(defstruct line
+  start
+  end)
+
+(defun point-from-string (str)
+  (let ((coord (uiop:split-string str :separator ",")))
+    (make-point :x (parse-integer (first coord))
+                :y (parse-integer (second coord)))))
+
+(defun line-from-string (str)
+  (let ((points (remove-if #'uiop:emptyp
+                           (uiop:split-string str :separator " -> "))))
+    (make-line :start (point-from-string (first points))
+               :end (point-from-string (second points)))))
+
+(defun read-hydro-lines (file)
+  (let ((lines (uiop:read-file-lines file)))
+    (mapcar #'line-from-string lines)))
+
+(defun vert-points-on-line (aline)
+  (let ((x1 (point-x (line-start aline)))
+        (x2 (point-x (line-end aline)))
+        (y1 (point-y (line-start aline)))
+        (y2 (point-y (line-end aline))))
+    (cond
+      ((= x1 x2) (loop for i from (min y1 y2) to (max y1 y2)
+                       collect (make-point :x x1 :y i)))
+      ((= y1 y2) (loop for i from (min x1 x2) to (max x1 x2)
+                       collect (make-point :x i :y y1)))
+      (t nil))))
+
+(defun hydrothermal-vents (linefunction lines)
+  (let ((marked (make-array '(1000 1000) :initial-element -1)))
+    (loop for line in lines do
+      (loop for apoint in (funcall linefunction line) do
+        (setf (aref marked (point-x apoint) (point-y apoint))
+              (+ 1 (aref marked (point-x apoint) (point-y apoint)))))
+      :finally (return
+                 (destructuring-bind (n m) (array-dimensions marked)
+                   (loop for i below n
+                         sum (loop for j below m
+                                   count (> (aref marked i j)))))))))
+
+
+(defparameter *result9* (hydrothermal-vents #'vert-points-on-line
+                                            (read-hydro-lines "hydrothermal.txt")))
+;; P10
+
+(defun points-on-line (aline)
+  (let ((x1 (point-x (line-start aline)))
+        (x2 (point-x (line-end aline)))
+        (y1 (point-y (line-start aline)))
+        (y2 (point-y (line-end aline))))
+    (cond
+      ((= x1 x2) (loop for i from (min y1 y2) to (max y1 y2)
+                       collect (make-point :x x1 :y i)))
+      ((= y1 y2) (loop for i from (min x1 x2) to (max x1 x2)
+                       collect (make-point :x i :y y1)))
+      ((= (abs (- y2 y1)) (abs (- x2 x1)))
+       (let ((x (- x2 x1)) (y (- y2 y1)))
+         (loop for i from 0 to (abs x)
+             collect (make-point :x (+ x1 (* i (/ x (abs x))))
+                                 :y (+ y1 (* i (/ y (abs x))))))))
+      (t nil))))
+
+(defparameter *result10* (hydrothermal-vents #'points-on-line
+                                             (read-hydro-lines "hydrothermal.txt")))
