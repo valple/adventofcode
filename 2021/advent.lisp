@@ -166,7 +166,7 @@
           :type int
           :documentation "5x5 matrix of numbers")
    (marked :accessor marked
-           :initarg marked
+           :initarg :marked
            :initform (make-array '(5 5) :initial-element -1)
            :type int
            :documentation "Empty 5x5 matrix that gets filled up"
@@ -324,3 +324,112 @@
 
 (defparameter *result10* (hydrothermal-vents #'points-on-line
                                              (read-hydro-lines "hydrothermal.txt")))
+
+;; Day 6
+;;
+;; P11
+
+;; Fancy class method
+;; super slow of course
+(defclass lanternfish ()
+  ((age :accessor age
+        :initarg :age
+        :initform 8)))
+
+(defun make-lanternfish (&optional (current-age 8))
+  (make-instance 'lanternfish :age current-age))
+
+(defmethod pass-day ((l lanternfish))
+  (let ((x (age l)))
+    (if (= x 0)
+        (progn
+          (setf (age l) 6)
+          (list l (make-lanternfish)))
+         (progn
+          (setf (age l) (- x 1))
+          (list l)))))
+
+
+
+(defclass lantern-model ()
+  ((day :accessor day
+        :initarg :day
+        :initform 0)
+   (fishes :accessor fishes
+           :initarg :fishes
+           :initform nil)))
+
+(defun make-lantern-model (&optional (fishes nil) (day 0))
+  (make-instance 'lantern-model :day day
+                                :fishes (map 'list #'make-lanternfish fishes)))
+
+(defun read-fishes (file)
+  (mapcar #'(lambda (str) (parse-integer (string-trim " " str)))
+          (uiop:split-string (uiop:read-file-string file) :separator ",")))
+
+(defmethod pass-day ((lm lantern-model))
+  (let ((d (day lm)))
+    (progn
+      (setf (day lm) (+ d 1))
+      (setf (fishes lm)
+            (loop for fish in (fishes lm)
+                 nconc (pass-day fish)))
+      (list-length (fishes lm)))))
+
+(defun run-fish-model (duration fishes)
+  (let ((lm (make-lantern-model fishes)))
+    (loop repeat duration
+          collect (pass-day lm) into nr-fishes
+          :finally (return (first (last nr-fishes))))))
+
+(defparameter *result11* (run-fish-model 80 (read-fishes "fishes.txt")))
+
+;; P2
+
+;; Quicker method for nr 1 & 2
+;;fucking hell gimme good package
+;; no error checks
+(defun matrix-mult (a b)
+  (let* ((n (array-dimension a 0))
+         (m (array-dimension b 1))
+         (p (array-dimension a 1))
+         (res (make-array (list n m) :element-type 'integer :initial-element 0)))
+    (loop for i below n do
+          (loop for j below m do
+            (setf (aref res i j)
+                  (loop for k below p
+                        sum (* (aref a i k) (aref b k j)))))
+          :finally (return res))))
+
+(defparameter *id-matrix*
+  (make-array '(9 9) :element-type 'integer
+                    :initial-contents (loop for i below 9 collect
+                                            (loop for j below 9 collect
+                                                  (if (= i j) 1 0)))))
+(defun matrix-power (a n)
+  (if (= n 0)
+      *id-matrix*
+      (if (= n 1)
+          a
+          (matrix-mult
+           (matrix-power a (- n 1))
+           a))))
+
+(defparameter *matrix-1y*
+  (make-array '(9 9) :element-type 'integer
+                     :initial-contents (loop for i below 9 collect
+                                             (loop for j below 9 collect
+                                                   (if (= (mod (+ 1 i) 9) j)
+                                                       1
+                                                       (if (and (= i 6) (= j 0))
+                                                           1
+                                                           0))))))
+
+(defun run-fast-fish-model (duration fishes)
+  (let ((fisharray (make-array '(9 1) :element-type 'integer :initial-contents
+                               (loop for i below 9
+                                     collect (list (max (count i fishes) 0))))))
+    (entry-sum-2d (matrix-mult (matrix-power *matrix-1y* duration)
+                               fisharray))))
+
+(defparameter *result12* (run-fast-fish-model 256 (read-fishes "fishes.txt")))
