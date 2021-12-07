@@ -433,3 +433,38 @@
                                fisharray))))
 
 (defparameter *result12* (run-fast-fish-model 256 (read-fishes "fishes.txt")))
+
+;; Day 7
+;;
+;; P1
+
+
+(defun read-crabs (file)
+  (sort
+   (map 'list #'parse-integer
+       (uiop:split-string (uiop:read-file-string file) :separator ","))
+   #'<))
+
+(defun fuel-calc (crabs)
+  (let* ((len (list-length crabs))
+         (median (nth (floor (/ len 2)) crabs)))
+    (loop for i in crabs
+          sum (abs (- i median)))))
+
+(defparameter *result13* (fuel-calc (read-crabs "crabfuel.txt")))
+
+;; P 2
+;;
+;;Too much headache today to think but it should be somewhere between the average and mean
+(defun more-fuel-calc (crabs)
+  (let* ((len (list-length crabs))
+         (median (nth (floor (/ len 2)) crabs))
+         (mean  (round (/ (loop for i in crabs
+                      sum i) len))))
+    (loop for j from (min mean median) to (max mean median)
+          collect
+          (loop for i in crabs
+                sum (/ (* (abs (- i j)) (+ 1 (abs (- i j)))) 2)) into sums
+          :finally (return (apply #'min sums)))))
+
+(defparameter *result14* (more-fuel-calc (read-crabs "crabfuel.txt")))
