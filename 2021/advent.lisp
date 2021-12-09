@@ -615,3 +615,92 @@
                                            (map 'list #'write-to-string nrs))))))))))
 
 (defparameter *result16* (part2-counting (read-segments "segmentsearch.txt")))
+
+;; Day 9
+;;
+;; P1
+
+(defun read-smoke (file)
+  (let ((heights (uiop:read-file-lines file)))
+    (make-array (list (list-length heights) (length (first heights)))
+                :initial-contents
+                (map 'list #'(lambda (x) (map 'list #'parse-integer
+                                (map 'list #'string
+                                     (coerce x 'list))))
+                      heights))))
+
+(defun low-than-elem (i j mat n m)
+  (destructuring-bind (x y) (array-dimensions mat)
+    (if (or (< n 0) (< m 0) (>= n x) (>= m y))
+        t
+        (< (aref mat i j) (aref mat n m)))))
+
+(defun make-neighbors (i j)
+  (list (list (- i 1) j)
+        (list (+ i 1) j)
+        (list i (+ j 1))
+        (list i (- j 1))))
+
+(defun low-than-neighbors (i j mat)
+      (loop for n in (make-neighbors i j)
+            when (not (low-than-elem i j mat (first n) (second n)))
+               do (return-from low-than-neighbors 0)
+          finally (return (+ 1 (aref mat i j)))))
+
+(defun count-basins (heights)
+  (destructuring-bind (x y) (array-dimensions heights)
+    (loop for i from 0 below x
+          sum (loop for j from 0 below y
+                    sum (low-than-neighbors i j heights)))))
+
+(defparameter *result17* (count-basins (read-smoke "smokebasin.txt")))
+
+;; P2
+;;
+(defun between-nr (x a b)
+  (and (< x b) (>= x a)))
+
+(defun connected-coord (outer res heights)
+  (destructuring-bind (x y) (array-dimensions heights)
+    (if outer
+        (let ((elem (car outer))
+              (nouter (cdr outer)))
+          (let ((elem1 (first elem))
+                (elem2 (second elem)))
+            (if (and (between-nr elem1 0 x)
+                     (between-nr elem2 0 y))
+                (if (< (aref heights elem1 elem2) 9)
+                    (loop for n in (make-neighbors elem1 elem2)
+                          if (and (not (member n res :test #'equal))
+                                  (between-nr (first n) 0 x)
+                                  (between-nr (second n) 0 y))
+                            collect n into news
+                          finally (return
+                                    (connected-coord (append nouter news)
+                                                     (append res (list elem))
+                                                     heights)))
+                    (connected-coord nouter res heights))
+                (connected-coord nouter res heights))))
+        (remove-duplicates res :test #'equal))))
+
+(defun find-lpts (heights)
+  (destructuring-bind (x y) (array-dimensions heights)
+    (loop for i from 0 below x
+          collect (loop for j from 0 below y
+                        if (> (low-than-neighbors i j heights) 0)
+                          collect (list i j)) into lpts
+          finally (return (reduce #'append lpts)))))
+
+(defun size-of-basin (lpt heights)
+  (list-length (connected-coord (list lpt) nil heights)))
+
+(defun sizes-of-basins (heights)
+  (sort
+    (map 'list #'(lambda (x) (size-of-basin x heights)) (find-lpts heights))
+    #'>))
+
+(defun prod-largest-three (heights)
+  (let ((sizes (sizes-of-basins heights)))
+    (* (first sizes) (second sizes) (third sizes))))
+
+(defparameter *result18* (prod-largest-three (read-smoke "smokebasin.txt")))
