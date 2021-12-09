@@ -468,3 +468,150 @@
           :finally (return (apply #'min sums)))))
 
 (defparameter *result14* (more-fuel-calc (read-crabs "crabfuel.txt")))
+
+;; Day 8
+;;
+;; P1
+
+(defun read-segments (file)
+  (map 'list #'(lambda (x) (uiop:split-string x :separator "|"))
+       (uiop:read-file-lines file)))
+
+(defun some-counting (segments)
+  (loop for i in segments
+        sum (count-if #'(lambda (x) (or
+                                     (= (length x) 2)
+                                     (= (length x) 3)
+                                     (= (length x) 4)
+                                     (= (length x) 7)))
+                      (map 'list #'(lambda (x) (string-trim " " x))
+                           (uiop:split-string (second i) :separator " ")))))
+
+(defparameter *result15* (some-counting (read-segments "segmentsearch.txt")))
+
+;; P2
+;;
+
+(defvar *nr-codes* '((t t t nil t t t)
+                    (nil nil t nil nil t nil)
+                    (t nil t t t nil t)
+                    (t nil t t nil t t)
+                    (nil t t t nil t nil)
+                    (t t nil t nil t t)
+                    (t t nil t t t t)
+                    (t nil t nil nil t nil)
+                    (t t t t t t t)
+                    (t t t t nil t t)))
+
+(defun make-possiblities ()
+  (loop for i below 7
+        collect '(#\a #\b #\c #\d #\e #\f #\g)))
+
+;; doesn't work for strings without modification!
+(defun list-rem-if-in (l1 l2)
+  (remove-if #'(lambda (x) (member x l1)) l2))
+
+(defun list-rem-if-not-in (l1 l2)
+  (remove-if-not #'(lambda (x) (member x l1)) l2))
+
+(defun list-is-member (l1 l2)
+  (loop for x in l1
+        if (member x l2) collect x))
+
+(defun deduce-code (strings)
+  (let ((possible (make-possiblities))
+        (str-parted (partition-by-stringlen strings)))
+    (loop for part in str-parted do
+      (cond
+        ((= (length (first part)) 2)
+         (loop for i from 0 to 6
+               collect (if (nth i (nth 1 *nr-codes*))
+                           (list-rem-if-not-in (coerce (first part) 'list) (nth i possible))
+                           (list-rem-if-in (coerce (first part) 'list) (nth i possible)))
+                 into newpossible
+               :finally (setf possible newpossible)))
+        ((= (length (first part)) 3)
+         (loop for i from 0 to 6
+               collect (if (nth i (nth 7 *nr-codes*))
+                           (list-rem-if-not-in (coerce (first part) 'list) (nth i possible))
+                           (list-rem-if-in (coerce (first part) 'list) (nth i possible)))
+                 into newpossible
+               :finally (setf possible newpossible)))
+        ((= (length (first part)) 4)
+         (loop for i from 0 to 6
+               collect (if (nth i (nth 4 *nr-codes*))
+                           (list-rem-if-not-in (coerce (first part) 'list) (nth i possible))
+                           (list-rem-if-in (coerce (first part) 'list) (nth i possible)))
+                 into newpossible
+               :finally (setf possible newpossible)))
+        ((= (length (first part)) 5)
+         (progn
+           (destructuring-bind (x y) (nth 4 possible)
+             (loop for str in part do
+               (let ((charlist (coerce str 'list)))
+                 (if (member x charlist)
+                     (if (member y charlist)
+                         (progn
+                           (setf (nth 2 possible) (list-is-member charlist (nth 2 possible)))
+                           (setf (nth 5 possible) (list-rem-if-in (nth 2 possible) (nth 5 possible))))
+                         (progn
+                           (setf (nth 6 possible) (list x))
+                           (setf (nth 4 possible) (list-rem-if-in (nth 6 possible) (nth 4 possible)))))
+                     (progn
+                       (setf (nth 6 possible) (list y))
+                       (setf (nth 4 possible) (list-rem-if-in (nth 6 possible) (nth 4 possible))))))))
+            (destructuring-bind (x y) (nth 1 possible)
+             (loop for str in part do
+               (let ((charlist (coerce str 'list)))
+                 (if (member x charlist)
+                     (if (member y charlist)
+                         nil
+                         (progn
+                           (setf (nth 3 possible) (list x))
+                           (setf (nth 1 possible) (list y))))
+                     (progn
+                           (setf (nth 3 possible) (list y))
+                           (setf (nth 1 possible) (list x)))))))))
+         (t nil))
+        :finally (return possible))))
+
+(defun partition-by-stringlen (strlist)
+  (let ((maxlist strlist))
+    (loop for i from 1 to (reduce #'max (map 'list #'length maxlist))
+        collect (loop for str in strlist
+                      if (= (length str) i) collect str))))
+
+(defun code-to-int-str (str possible)
+  (loop for chr in (coerce str 'list)
+        collect (loop for i from 0 to 6
+                      when (char= (first (nth i possible)) chr)
+                        return i) into pos
+        :finally (return
+                   (loop for i from 0 to 9
+                         when (loop for j from 0 to 6
+                                    when (or (and (not (nth j (nth i *nr-codes*)))
+                                                  (member j pos))
+                                             (and (not (member j pos))
+                                                  (nth j (nth i *nr-codes*))))
+                                      return nil
+                                    finally (return t))
+                           return i))))
+
+(defun clean-linepart(linepart)
+  (remove-if #'uiop:emptyp (uiop:split-string linepart :separator " ")))
+
+
+(defun part2-counting (segments)
+  (reduce #'+
+   (loop for line in segments
+         collect
+         (destructuring-bind (l1 l2) line
+           (let ((possible (deduce-code (clean-linepart l1))))
+             (loop for str in (clean-linepart l2)
+                   collect (code-to-int-str str possible) into nrs
+                   finally (return (parse-integer
+                                    (reduce #'(lambda (x y)
+                                               (concatenate 'string x y))
+                                           (map 'list #'write-to-string nrs))))))))))
+
+(defparameter *result16* (part2-counting (read-segments "segmentsearch.txt")))
