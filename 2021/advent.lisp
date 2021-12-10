@@ -704,3 +704,84 @@
     (* (first sizes) (second sizes) (third sizes))))
 
 (defparameter *result18* (prod-largest-three (read-smoke "smokebasin.txt")))
+
+;; Day 10
+;;
+;; P1
+
+(defun read-syntax (file)
+  (map 'list #'(lambda (x) (coerce x 'list))
+       (uiop:read-file-lines file)))
+
+(defun value-chr (chr)
+  (cond
+    ((char= chr #\)) 3)
+    ((char= chr #\]) 57)
+    ((char= chr #\}) 1197)
+    ((char= chr #\>) 25137)
+    (t 0)))
+
+(defparameter *open-brackets* '(#\( #\[ #\{ #\<))
+(defparameter *closed-brackets* '(#\) #\] #\} #\>))
+
+(defun bracket-closer (chr)
+  (nth (position chr *open-brackets* :test #'char=) *closed-brackets*))
+
+(defun corrupted-score (syntax-start syntax-end)
+  (if syntax-end
+      (let ((chr (car syntax-end)))
+        (if (member chr *open-brackets* :test #'char=)
+            (is-corrupted (append syntax-start (list chr)) (cdr syntax-end))
+            (if syntax-start
+                (if (char= chr (bracket-closer (car (last syntax-start))))
+                    (is-corrupted (reverse (cdr (reverse syntax-start))) (cdr syntax-end))
+                    (value-chr chr))
+                0)))
+      (if syntax-start
+          0
+          0)))
+
+(defun sum-syntax-errors (syntax-lines)
+  (loop for line in syntax-lines
+        sum (corrupted-score nil line)))
+
+(defparameter *result19* (sum-syntax-errors (read-syntax "syntax.txt")))
+
+;; P2
+;;
+
+(defun value-chr2 (chr)
+  (+ 1 (position chr *closed-brackets* :test #'char=)))
+
+(defun is-incomplete (syntax-start syntax-end)
+  (if syntax-end
+     (let ((chr (car syntax-end)))
+       (if (member chr *open-brackets* :test #'char=)
+           (is-incomplete (append syntax-start (list chr)) (cdr syntax-end))
+           (if syntax-start
+               (if (char= chr (bracket-closer (car (last syntax-start))))
+                   (is-incomplete (reverse (cdr (reverse syntax-start))) (cdr syntax-end))
+                   nil)
+               nil)))
+     (if syntax-start
+         (reverse syntax-start)
+         nil)))
+
+(defun incomplete? (line)
+  (is-incomplete nil line))
+
+(defun score-incomplete (chrs)
+  (loop with score = 0 for chr in chrs do
+             (setf score (+ (* 5 score) (value-chr2 (bracket-closer chr))))
+        finally (return score)))
+
+(defun median (l)
+  (nth (floor (/ (list-length l) 2)) l))
+
+(defun score-incompletes (syntax-lines)
+  (median
+   (sort (map 'list #'score-incomplete
+             (remove nil (map 'list #'incomplete? syntax-lines)))
+        #'<)))
+
+(defparameter *result20* (score-incompletes (read-syntax "syntax.txt")))
