@@ -785,3 +785,99 @@
         #'<)))
 
 (defparameter *result20* (score-incompletes (read-syntax "syntax.txt")))
+
+;; Day 11
+;;
+;; P1
+
+(defun read-dumbos (file)
+  (let ((matelem
+          (map 'list #'(lambda (x) (map 'list #'digit-char-p (coerce x 'list)))
+               (uiop:read-file-lines file))))
+    (make-array (list (list-length matelem) (list-length (first matelem)))
+                :initial-contents matelem)))
+
+
+(defun make-diag-neighbors (i j)
+  (list (list (- i 1) j)
+        (list (+ i 1) j)
+        (list i (+ j 1))
+        (list i (- j 1))
+        (list (+ i 1) (+ j 1))
+        (list (+ i 1) (- j 1))
+        (list (- i 1) (+ j 1))
+        (list (- i 1) (- j 1))))
+
+
+(defun mat+c-mod (mat c)
+  (destructuring-bind (n m) (array-dimensions mat)
+    (loop for i from 0 below n do
+          (loop for j from 0 below m do
+            (let ((z (aref mat i j)))
+              (setf (aref mat i j) (mod (+ c z) 10))))
+          finally (return mat))))
+
+;; side-effects
+(defun flash (mat i j)
+  (let ((nmat mat))
+    (progn
+      (setf (aref nmat i j) nil)
+      (destructuring-bind (n m) (array-dimensions nmat)
+        (loop for neighbor in (make-diag-neighbors i j) do
+          (let ((a (first neighbor))
+                 (b (second neighbor)))
+            (if (and (between-nr a 0 n) (between-nr b 0 m))
+                (let ((z (aref nmat a b)))
+                  (unless (or (eq 0 z) (not z))
+                    (setf (aref nmat a b) (mod (+ 1 z) 10))))))
+              finally (return nmat))))))
+
+(defun traverse-energies (mat)
+  (destructuring-bind (n m) (array-dimensions mat)
+      (loop for i from 0 below n do
+            (loop for j from 0 below m do
+                  (let ((z (aref mat i j)))
+                    (when (eq z 0)
+                      (return-from traverse-energies (traverse-energies (flash mat i j))))))
+            finally (return mat))))
+
+(defun cycle (mat)
+  (let ((nmat (traverse-energies (mat+c-mod mat 1)))
+        (flashes 0))
+    (destructuring-bind (n m) (array-dimensions nmat)
+      (loop for i from 0 below n do
+            (loop for j from 0 below m do
+                  (if (not (aref nmat i j))
+                      (progn
+                        (setf (aref nmat i j) 0)
+                        (setf flashes (+ 1 flashes)))))
+            finally (return (cons nmat flashes))))))
+
+(defun n-cycle (mat n flashes)
+  (if (= 0 n)
+      flashes
+      (let ((nmat (cycle mat)))
+        (n-cycle (car nmat) (- n 1) (+ flashes (cdr nmat))))))
+
+(defparameter *result21* (n-cycle (read-dumbos "dumbos.txt") 100 0))
+
+
+(defun n-cycle-break (mat)
+  (destructuring-bind (n m) (array-dimensions mat)
+    (let ((total (* n m))
+          (flashes 0)
+          (run 0)
+          (nmat nil))
+     (loop while (/= total flashes) do
+       (progn
+         (setf nmat (cycle mat))
+         (setf mat (car nmat))
+         (setf flashes (cdr nmat))
+         (setf run (+ 1 run)))
+       finally (return run)))))
+
+(defparameter *result22* (n-cycle-break (read-dumbos "dumbos.txt")))
+
+;; Day 12
+;;
+;; P1
