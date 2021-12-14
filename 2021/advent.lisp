@@ -881,3 +881,198 @@
 ;; Day 12
 ;;
 ;; P1
+
+(defun read-paths (file)
+  (map 'list #'(lambda (x) (uiop:split-string x :separator "-"))
+       (uiop:read-file-lines file)))
+
+(defun make-caves (paths)
+  (let ((cave-table (make-hash-table :test 'equal)))
+    (loop for str in (loop for path in paths
+                           append (list (first path) (second path)) into total
+                           finally (return (remove-duplicates total :test #'string=))) do
+                        (setf (gethash str cave-table) nil)
+          finally (return cave-table))))
+
+(defun add-paths (paths cave-table)
+  (loop for path in paths do
+    (let* ((p1 (first path))
+           (p2 (second path))
+           (curr1 (gethash p1 cave-table))
+           (curr2 (gethash p2 cave-table)))
+      (progn
+        (setf (gethash p1 cave-table) (append curr1 (list p2)))
+        (setf (gethash p2 cave-table) (append curr2 (list p1)))))
+    finally (return cave-table)))
+
+(defun possible-paths (incomplete-paths complete-paths cave-table)
+  (if incomplete-paths
+      (let* ((curr-path (car incomplete-paths))
+             (incomp-paths (cdr incomplete-paths))
+             (last-cave (car (last curr-path)))
+             (options (gethash last-cave cave-table)))
+        (loop for opt in (remove-if #'(lambda (x) (and (lower-case-p (char x 0))
+                                                       (member x curr-path :test #'string=)))
+                                    options)
+              if (string= opt "end") collect (append curr-path (list opt)) into comps
+                else collect (append curr-path (list opt)) into incomps
+              finally (return (possible-paths (append incomp-paths incomps)
+                                              (+ complete-paths (list-length comps)) cave-table))))
+      complete-paths))
+
+(defun calc-possible-paths (file)
+  (let* ((paths (read-paths file))
+         (cave-table (add-paths paths (make-caves paths))))
+    (possible-paths '(("start")) 0 cave-table)))
+
+(defparameter *result23* (calc-possible-paths "paths.txt"))
+
+;; P2
+;;
+(defun add-possible-second (path elem)
+  (if (upper-case-p (char elem 0))
+      (append path (list elem))
+      (if (member elem path :test #'string=)
+          (append (list t) (cdr path) (list elem))
+          (append path (list elem)))))
+
+(defun possible-paths2 (incomplete-paths complete-paths cave-table)
+  (if incomplete-paths
+      (let* ((curr-path (car incomplete-paths))
+             (incomp-paths (cdr incomplete-paths))
+             (last-cave (car (last curr-path)))
+             (options (gethash last-cave cave-table)))
+        (loop for opt in (remove-if #'(lambda (x) (or (and (lower-case-p (char x 0))
+                                                           (> (count x curr-path :test #'string=)
+                                                              (if (car curr-path) 0 1)))
+                                                      (string= x "start")))
+                                    options)
+              if (string= opt "end") count opt into comps
+                else collect (add-possible-second curr-path opt) into incomps
+              finally (return (possible-paths2 (append incomps incomp-paths)
+                                              (+ complete-paths comps) cave-table))))
+      complete-paths))
+
+(defun possible-paths3 (cave-table)
+  (let ((incomplete-paths '((nil "start")))
+        (complete-paths 0))
+    (loop while incomplete-paths do
+      (let* ((curr-path (car incomplete-paths))
+             (incomp-paths (cdr incomplete-paths))
+             (last-cave (car (last curr-path)))
+             (options (gethash last-cave cave-table)))
+        (loop for opt in (remove-if #'(lambda (x) (or (and (lower-case-p (char x 0))
+                                                           (> (count x curr-path :test #'string=)
+                                                              (if (car curr-path) 0 1)))
+                                                      (string= x "start")))
+                                    options)
+              if (string= opt "end") count opt into comps
+                else collect (add-possible-second curr-path opt) into incomps
+              finally (progn
+                        (setf incomplete-paths (append incomps incomp-paths))
+                        (setf complete-paths (+ complete-paths comps)))))
+      :finally (return complete-paths))))
+
+
+(defun calc-possible-paths2 (file)
+  (let* ((paths (read-paths file))
+         (cave-table (add-paths paths (make-caves paths))))
+    (possible-paths2 '((nil "start")) 0 cave-table)))
+
+
+(defun calc-possible-paths3 (file)
+  (let* ((paths (read-paths file))
+         (cave-table (add-paths paths (make-caves paths))))
+    (possible-paths3 cave-table)))
+
+
+(defparameter *result24* (calc-possible-paths3 "paths.txt"))
+
+;; Day 13
+;;
+;; P1
+
+(defun read-folds (file)
+  (let* ((folds (uiop:read-file-lines file))
+         (cutoff (position "" folds :test #'string=)))
+    (cons (map 'list #'(lambda (x) (map 'list #'parse-integer
+                                        (uiop:split-string x :separator ",")))
+               (subseq folds 0 cutoff))
+          (subseq folds (+ 1 cutoff)))))
+
+;; so inefficient
+(defun make-fold-matrix (folds)
+  (destructuring-bind (x y) (loop for (i j) in folds
+                                  maximize i into mx
+                                  maximize j into my
+                                  finally (return (list (+ 1 mx) (+ 1 my))))
+    (let ((fmatrix (make-array (list y x) :initial-element nil)))
+      (loop for (y x) in folds do
+            (setf (aref fmatrix x y) t)
+            finally (return fmatrix)))))
+
+;;mirror along m
+(defun mirror-up (m y)
+  (+ m (- m y)))
+
+;; horiz fold - fold along x
+;; otheriwse fold along y
+(defun fold-matrix (mat nr horiz)
+  (let* ((x (array-dimension mat 0))
+         (y (array-dimension mat 1))
+         (dims (if horiz (list x nr)
+                         (list nr y)))
+         (fld-index (if horiz (min (- y 1 nr) nr)
+                              (min (- x 1 nr) nr))))
+    (loop for i below (first dims)
+          collect (loop for j below (second dims)
+                        collect (or (aref mat i j)
+                                    (if horiz
+                                        (if (between-nr j (- nr fld-index) nr)
+                                            (aref mat i (mirror-up nr j))
+                                            nil)
+                                        (if (between-nr i (- nr fld-index) nr)
+                                            (aref mat (mirror-up nr i) j)
+                                            nil)))) into nmat
+          finally (return (make-array dims :initial-contents nmat)))))
+
+(defun count-dots (mat)
+  (loop for i below (array-dimension mat 0)
+        sum (loop for j below (array-dimension mat 1)
+                  if (aref mat i j) count 1)))
+
+(defparameter *result25* (count-dots
+                          (fold-matrix
+                           (make-fold-matrix
+                            (car (read-folds "fold.txt")))
+                           655 t)))
+
+(defun decode-instruction (line)
+  (apply #'(lambda (x y) (list (find "x"  x :test #'string=)
+                             (parse-integer y)))
+         (uiop:split-string line :separator "=")))
+
+(defun decode-instructions (instructions)
+  (map 'list #'decode-instruction instructions))
+
+(defun do-all-folds (mat instructions)
+  (if instructions
+      (do-all-folds
+          (fold-matrix mat
+                                 (second (first instructions))
+                                 (first (first instructions)))
+        (cdr instructions))
+      mat))
+
+(defun fold-input (input)
+  (let ((mat (make-fold-matrix (car input)))
+        (instr (decode-instructions (cdr input))))
+    (do-all-folds mat instr)))
+
+(defun pretty-print-mat (mat)
+  (loop for i below (array-dimension mat 0)
+        collect (loop for j below (array-dimension mat 1) do
+                     (format t "~c " (if (aref mat i j) #\# #\.))
+                      finally (format t "~%"))))
+
+(defparameter *result26* (fold-input (read-folds "fold.txt")))
