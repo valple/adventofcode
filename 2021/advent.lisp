@@ -1076,3 +1076,165 @@
                       finally (format t "~%"))))
 
 (defparameter *result26* (fold-input (read-folds "fold.txt")))
+
+;; Day 14
+;;
+;; P1
+
+(defun read-polymer (file)
+  (let* ((polys (uiop:read-file-lines file))
+         (cutoff (position "" polys :test #'string=)))
+    (cons (subseq polys 0 cutoff)
+          (map 'list #'(lambda (x)
+                         (remove-if #'uiop:emptyp
+                                              (uiop:split-string x :separator " -> ")))
+               (subseq polys (+ 1 cutoff))))))
+
+(defun apply-rule (charpair rule)
+  (if (string= charpair (first rule))
+      (second rule)
+      ""))
+
+(defun pair-concat-strings (str1 str2)
+  (concatenate 'string str1 str2))
+
+(defun apply-all-rules (charpair rules)
+  (loop for rule in rules
+        collect (apply-rule charpair rule) into stringlist
+        finally (return (concatenate 'string
+                                     (subseq charpair 0 1)
+                                     (reduce #'pair-concat-strings stringlist)))))
+
+(defun one-step-apply-rules (word rules)
+  (loop for i below (- (length word) 1)
+        collect (apply-all-rules (subseq word i (+ 2 i)) rules) into new-word
+        finally (return (concatenate 'string
+                                     (reduce #'pair-concat-strings new-word)
+                                     (subseq (reverse word) 0 1)))))
+
+(defun n-steps-apply (word rules n)
+  (if (= 0 n)
+      word
+      (n-steps-apply (one-step-apply-rules word rules) rules (- n 1))))
+
+(defun chr-freq-rec (word freq)
+  (if (uiop:emptyp word)
+      freq
+      (let ((chr (subseq word 0 1)))
+        (chr-freq-rec (remove chr word :test #'string=)
+                      (append freq (list (list chr
+                                               (count chr word :test #'string=))))))))
+
+(defun char-freq (word)
+  (chr-freq-rec word nil))
+
+(defun sort-freq (freq-list)
+  (sort freq-list #'(lambda (x y) (if (< (second x) (second y)) t nil))))
+
+(defun solve-word (input)
+  (let ((word (car (car input)))
+        (rules (cdr input)))
+    (n-steps-apply word rules 10)))
+
+(defun calc-most-least (word)
+  (let ((sorted-freq (sort-freq (char-freq word))))
+    (- (second (car (last sorted-freq)))
+       (second (first sorted-freq)))))
+
+(defun calc-part1-polymer (input)
+   (calc-most-least (solve-word input)))
+
+(defparameter *result27* (calc-part1-polymer (read-polymer "polymer.txt")))
+
+;; P2
+
+(defun apply-rule (charpair rules)
+  (loop for rule in rules
+        when (string= (first rule) charpair)
+          return (list (concatenate 'string (subseq charpair 0 1) (second rule))
+                       (concatenate 'string  (second rule) (subseq charpair 1 2)))
+        finally (return (list charpair))))
+
+(defparameter *word* (car (car (read-polymer "polymer-test.txt"))))
+(defparameter *rules* (cdr (read-polymer "polymer-test.txt")))
+
+(defparameter *char-hash* (make-hash-table))
+
+(defun initial-table (word)
+  (let ((htable (make-hash-table :test 'equal)))
+    (loop for i below (- (length word) 1) do
+      (setf (gethash (subseq word i (+ i 2)) htable)
+            (plusif (gethash (subseq word i (+ i 2)) htable) 1))
+    finally (return htable))))
+
+;; well that's gonna be inefficient as fuck too
+(defun apply-rules-once (htable rules)
+  (let ((new-htable (make-hash-table :test 'equal)))
+    (loop for k being each hash-key of htable
+          using (hash-value val)
+          do (loop for i in (apply-rule k rules)
+                   do
+                      (setf (gethash i new-htable)
+                            (plusif (gethash i new-htable) val)))
+             finally (return new-htable))))
+
+(defun plusif (a b)
+  (if a
+      (+ a b)
+      b))
+
+(defun apply-rules-n-times (htable rules n)
+  (if (= n 0)
+      htable
+      (apply-rules-n-times (apply-rules-once htable rules) rules (- n 1))))
+
+(defun calc-count-table (htable)
+  (let ((count-table (make-hash-table :test 'equal)))
+    (loop for k being each hash-key of htable
+          using (hash-value val)
+          do
+             (loop for c across k
+                   do
+                (let ((val2 (gethash (string c) count-table)))
+                  (setf (gethash (string c) count-table)
+                        (plusif val2 val))))
+          finally (return
+                    (loop for k being each hash-key of count-table
+                          using (hash-value val) do
+                            (if (or (string= k "P") (string= k "O"))
+                              (setf (gethash k count-table) (+ (/ (- val 1) 2) 1))
+                              (setf (gethash k count-table) (/ val 2)))
+                          finally (return count-table))))))
+
+(defun print-table (htable)
+  (loop for k being each hash-key of htable
+        using (hash-value val)
+        do (format t "~s : ~s ~%" k val)))
+
+(defparameter *word* (car (car (read-polymer "polymer-test.txt"))))
+(defparameter *rules* (cdr (read-polymer "polymer-test.txt")))
+
+(defun part2-calc-count-table (file n)
+  (let* ((input (read-polymer file))
+         (word (car (car input)))
+         (rules (cdr input)))
+    (calc-count-table
+     (apply-rules-n-times (initial-table word) rules n))))
+
+(defun calc-max-min (count-table)
+  (loop for k being each hash-key of count-table
+        using (hash-value val)
+        maximize val into maxi
+        minimize val into mini
+        finally (return (- maxi mini))))
+
+(defparameter *result28* (calc-max-min
+                          (part2-calc-count-table "polymer.txt" 40)))
+
+;; Day 15
+;;
+;; P1
+;;
+
+(defun total-risk (path)
+  (reduce #'+ path))
