@@ -1236,5 +1236,131 @@
 ;; P1
 ;;
 
-(defun total-risk (path)
-  (reduce #'+ path))
+;; val big coz too lazy to implement infinity
+(defstruct node
+  x
+  y
+  risk
+  (from nil)
+  (val 1000000))
+
+
+(defun insert-by-value (lst pair)
+  (let ((nod (gethash pair *grid*)))
+    (loop for i in lst
+          until (>= (node-val (gethash i *grid*)) (node-val nod)) collect i into smaller
+          finally (return (append smaller
+                                  (list pair)
+                                  (nthcdr (list-length smaller) lst))))))
+
+(defun read-risk-levels (file)
+  (map 'list #'(lambda (x) (map 'list #'digit-char-p (coerce x 'list)))
+       (uiop:read-file-lines file)))
+
+(defun make-grid (input)
+  (let ((htable (make-hash-table :test 'equal)))
+    (loop for i from 0 to (- (list-length input) 1) do
+          (loop for j from 0 to (- (list-length (car input)) 1) do
+            (setf (gethash (list i j) htable) (make-node :x i :y j :risk (nth j (nth i input)))))
+          finally (return htable))))
+
+(defparameter *grid* (make-grid (read-risk-levels "risklevels.txt")))
+
+(defun make-neighbors2 (pair)
+  (let ((i (first pair))
+        (j (second pair)))
+    (list (list (- i 1) j)
+          (list (+ i 1) j)
+          (list i (+ j 1))
+          (list i (- j 1)))))
+
+(defun shortest-path ()
+  (let ((visited nil)
+        (unvisited (loop for k being each hash-key of *grid* collect k))
+        (shortest-path nil)
+        (current nil))
+    (progn
+      (setf current (pop unvisited))
+      (setf (node-val (gethash current *grid*)) 0)
+      (loop while (not shortest-path)
+            do (progn
+                 (loop for n in (make-neighbors2 current)
+                       do (when (member n unvisited :test 'equal)
+                            (let* ((nod (gethash n *grid*))
+                                  (oldval (node-val nod))
+                                  (risk (node-risk nod))
+                                  (newval (+ risk (node-val (gethash current *grid*)))))
+                              (when (< newval oldval)
+                                (progn
+                                  (setf (node-val nod) newval)
+                                  (setf (node-from nod) current)
+                                  (setf unvisited (remove n unvisited :test 'equal))
+                                  (setf unvisited (insert-by-value unvisited n)))))))
+                 (push current visited)
+                 (setf current (pop unvisited))
+                 (if (equal current '(99 99))
+                     (setf shortest-path (node-val (gethash current *grid*)))))
+      finally (return shortest-path)))))
+
+(defparameter *result29* (shortest-path))
+
+;; P2
+;; basically copy paste from part 1 and wait a while :P
+;;
+(defun cycle-9 (nr x)
+  (if (<= (+ x nr) 9)
+      (+ x nr)
+      (mod (+ x nr 1) 10)))
+
+(defun cycle-9-lst (lst x)
+  (loop for i from 0 to (- (list-length lst) 1)
+        collect (cycle-9 (nth i lst) x)))
+
+;; Could have been more elegant with mod, rem etc
+(defun enlarge-input (input)
+  (loop for j from 0 to 4
+        append
+        (loop for n from 0 to (- (list-length input) 1)
+              collect (loop for i from 0 to 4
+                        append (cycle-9-lst (nth n input) (+ i j))))))
+
+(defparameter *large-test-grid* (make-grid (enlarge-input (read-risk-levels "risklevels.txt"))))
+
+(defun insert-by-value2 (lst pair)
+  (let ((nod (gethash pair *large-test-grid*)))
+    (loop for i in lst
+          until (>= (node-val (gethash i *large-test-grid*)) (node-val nod)) collect i into smaller
+          finally (return (append smaller
+                                  (list pair)
+                                  (nthcdr (list-length smaller) lst))))))
+
+;; Some very bad things in there
+(defun shortest-path2 ()
+  (let ((visited nil)
+        (unvisited (loop for k being each hash-key of *large-test-grid* collect k))
+        (shortest-path nil)
+        (current nil))
+    (progn
+      (setf current (pop unvisited))
+      (setf (node-val (gethash current *large-test-grid*)) 0)
+      (loop while (not shortest-path)
+            do (progn
+                 (loop for n in (make-neighbors2 current)
+                       do (when (member n unvisited :test 'equal)
+                            (let* ((nod (gethash n *large-test-grid*))
+                                  (oldval (node-val nod))
+                                  (risk (node-risk nod))
+                                  (newval (+ risk (node-val (gethash current *large-test-grid*)))))
+                              (when (< newval oldval)
+                                (progn
+                                  (setf (node-val nod) newval)
+                                  (setf (node-from nod) current)
+                                  (setf unvisited (remove n unvisited :test 'equal))
+                                  (setf unvisited (insert-by-value2 unvisited n)))))))
+                 (push current visited)
+                 (setf current (pop unvisited))
+                 (if (equal current '(499 499))
+                     (setf shortest-path (node-val (gethash current *large-test-grid*)))))
+      finally (return shortest-path)))))
+
+(defparameter *result30* (shortest-path2))
