@@ -1364,3 +1364,74 @@
       finally (return shortest-path)))))
 
 (defparameter *result30* (shortest-path2))
+
+
+;; Day 16
+
+
+;; Day 17
+;;
+;; I'm tired, so quick and dirty withuot a care
+;;
+(defstruct probe
+  (posx 0)
+  (posy 0)
+  velx
+  vely)
+
+(defun one-step (probe)
+  (progn
+    (setf (probe-posx probe) (+ (probe-posx probe)
+                                (probe-velx probe)))
+    (setf (probe-posy probe) (+ (probe-posy probe)
+                                (probe-vely probe)))
+    (setf (probe-velx probe) (move-towards-zero (probe-velx probe)))
+    (setf (probe-vely probe) (- (probe-vely probe) 1))))
+
+(defun move-towards-zero (n)
+  (cond
+    ((= n 0) 0)
+    ((> n 0) (- n 1))
+    (t (+ n 1))))
+
+(defparameter xmax 171)
+(defparameter xmin 150)
+(defparameter ymax -70)
+(defparameter ymin -129)
+
+(defun brute-force-trajectories ()
+  (loop for i from 0 to 100 ;;random values
+        maximize
+        (loop for j from -100 to 1000 ;;random values
+             maximize (let ((probe (make-probe :posx 0 :posy 0 :velx i :vely j)))
+                        (loop while (and (<= (probe-posx probe) xmax)
+                                         (>= (probe-posy probe) ymin)) do
+                                           (progn
+                                             (one-step probe)
+                                             (when (and (<= (probe-posx probe) xmax)
+                                                        (>= (probe-posx probe) xmin)
+                                                        (<= (probe-posy probe) ymax)
+                                                        (>= (probe-posy probe) ymin))
+                                               (return (/ (* j (+ 1 j)) 2))))
+                              :finally (return 0))))))
+
+
+(defparameter *result33* (brute-force-trajectories))
+
+(defun brute-force-count-trajectories ()
+  (loop for i from -1000 to 1000 ;;random values
+        sum
+        (loop for j from -1000 to 1000 ;;random values
+             sum (let ((probe (make-probe :posx 0 :posy 0 :velx i :vely j)))
+                        (loop while (and (<= (probe-posx probe) xmax)
+                                         (>= (probe-posy probe) ymin)) do
+                                           (progn
+                                             (one-step probe)
+                                             (when (and (<= (probe-posx probe) xmax)
+                                                        (>= (probe-posx probe) xmin)
+                                                        (<= (probe-posy probe) ymax)
+                                                        (>= (probe-posy probe) ymin))
+                                               (return 1)))
+                              :finally (return 0))))))
+
+(defparameter *result34* (brute-force-count-trajectories))
