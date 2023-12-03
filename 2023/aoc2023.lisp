@@ -1,11 +1,8 @@
-(defpackage :aoe2023
+(defpackage :aoc2023
   (:use :cl :arrow-macros)
   (:import-from :alexandria #:iota))
 
-(in-package :aoe2023)
-
-(ql:quickload :cl-ppcre
-	      :arrow-macros)
+(in-package :aoc2023)
 
 ;; Common functions, reusable across days 
 (defun read-input-file (filepath)
@@ -154,3 +151,79 @@
 
 (defun print-d2-2-solution ()
   (print-solution "d2.txt" #'d2-2-solution))
+
+;; D3
+(defun d3-coordinates-square (xmin xmax ymin ymax)
+  (loop for i from xmin to xmax
+	with z = '() do
+	  (loop for j from ymin to ymax do
+	    (push (list i j) z))
+	finally (return z)))
+
+(defun d3-1-remove-before-x (x l)
+  (remove-if #'(lambda (c) (< (car c) x)) l))
+
+(defun adjoin-all (items list)
+  (reduce #'(lambda (x y) (adjoin y x :test #'equal)) items :initial-value list))
+
+(defun d3-1-parse-lines (lines)
+  (let ((nums '())
+	(matched '())
+	(sum 0))
+    (loop for i from 0 below (list-length lines) do
+      (let ((line (nth i lines)))
+	(setf matched (d3-1-remove-before-x (- i 2) matched))
+	(ppcre:do-matches (start end "[0-9]+|[^.]" line)
+	  (if (str:digitp (subseq line start (1+ start)))
+	      (let ((nr (parse-integer (subseq line start end))))
+		(progn (setf nums (push (list (d3-coordinates-square i i start (1- end)) nr) nums))
+		       (incf sum nr)))
+	      (setf matched (adjoin-all (d3-coordinates-square (1- i) (1+ i) (1- start) (1+ start)) matched))))
+	(setf nums (remove-if #'(lambda (c) (intersection (car c) matched :test #'equal)) nums)))
+	  finally (return (reduce #'- (mapcar #'second nums) :initial-value sum)))))
+
+(defun d3-1-solution (filepath)
+   (->> filepath
+     read-input-file
+     d3-1-parse-lines))
+
+(defun d3-2-remove-before-x (x list)
+  (remove-if #'(lambda (c)
+		 (< (caaar c) x)) list))
+
+(defun d3-2-parse-lines (lines)
+  (let ((nums '())
+	(sum 0)
+	(stars '()))
+    (loop for i from 0 below (list-length lines) do
+      (let ((line (nth i lines)))
+	(ppcre:do-matches (start end "[0-9]+|[^.]" line)
+	  (if (str:digitp (subseq line start (1+ start)))
+	      (let ((nr (parse-integer (subseq line start end))))
+		(setf nums (push (list (d3-coordinates-square i i start (1- end)) nr) nums)))
+	      (if (equal "*" (subseq line start (1+ start)))
+		  (setf stars (append stars (list (list i start)))))))
+	(loop for star in stars do
+	  (if (= (1- i) (car star))
+	      (let* ((nbh (d3-coordinates-square (- i 2) i (1- (cadr star)) (1+ (cadr star))))
+		    (adj-gears (remove-if-not #'(lambda (c)
+						  (intersection (car c) nbh :test #'equal)) nums)))
+		(if  (= 2 (list-length adj-gears))
+		     (incf sum (reduce #'* (mapcar #'cadr adj-gears)))))))
+	(setf nums (d3-2-remove-before-x (1- i) nums))
+	(setf stars (d3-1-remove-before-x i stars))
+	(if (= i (list-length lines))
+	    (loop for star in stars do
+	      (if (= i (car star))
+		  (let* ((nbh (d3-coordinates-square (- i 1) i (1- (cadr star)) (1+ (cadr star))))
+			 (adj-gears (remove-if-not #'(lambda (c)
+						       (intersection (car c) nbh :test #'equal)) nums)))
+		    (if  (= 2 (list-length adj-gears))
+			 (incf sum (reduce #'* (mapcar #'cadr adj-gears)))))))))
+	  finally (return sum))))
+
+(defun d3-2-solution (filepath)
+  (->> filepath
+    read-input-file
+    d3-2-parse-lines))
+
