@@ -227,3 +227,55 @@
     read-input-file
     d3-2-parse-lines))
 
+;; D4
+
+(defun d4-1-str-to-nr-list (str)
+  (->> str
+    (ppcre:all-matches-as-strings "[0-9]+")
+    (mapcar #'parse-integer)))
+
+(defun d4-1-parse-line (line)
+  (->> line
+    (str:split ":")
+    second
+    (str:split "|")
+    (mapcar #'d4-1-str-to-nr-list)))
+
+(defun d4-1-eval-line (line-nrs)
+  (->> line-nrs
+    d4-line-matches
+    1-
+    (expt 2)
+    floor))
+
+(defun d4-line-matches (line-nrs)
+  (->> (intersection (first line-nrs)
+		     (second line-nrs))
+    list-length))
+
+
+(defun d4-2-eval-lines (lines)
+  (let* ((n (list-length lines))
+	 (scratchcards (iota n :start 0 :step 0)))
+    (loop for i from 0 below n do
+      (let ((match-nr (d4-line-matches (nth i lines)))
+	    (current-val (1+ (nth i scratchcards))))
+	(progn
+	  (setf (nth i scratchcards) current-val)
+	  (loop for j from 1 to match-nr do
+	    (when (< (+ i j) n)
+	      (incf (nth (+ i j) scratchcards) current-val)))))
+      finally (return (reduce #'+ scratchcards)))))
+
+(defun d4-1-solution (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar #'d4-1-parse-line)
+    (mapcar #'d4-1-eval-line)
+    (reduce #'+)))
+
+(defun d4-2-solution (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar #'d4-1-parse-line)
+    d4-2-eval-lines))
