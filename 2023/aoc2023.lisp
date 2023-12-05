@@ -1,5 +1,5 @@
 (defpackage :aoc2023
-  (:use :cl :arrow-macros)
+  (:use :cl :arrow-macros :str)
   (:import-from :alexandria #:iota))
 
 (in-package :aoc2023)
@@ -253,7 +253,6 @@
 		     (second line-nrs))
     list-length))
 
-
 (defun d4-2-eval-lines (lines)
   (let* ((n (list-length lines))
 	 (scratchcards (iota n :start 0 :step 0)))
@@ -279,3 +278,48 @@
     read-input-file
     (mapcar #'d4-1-parse-line)
     d4-2-eval-lines))
+
+;; D5
+(defun d5-parse-all (seeds lines)
+  (let ((curr-vals seeds)
+	(new-vals '()))
+    (loop for line in lines do
+      (if (equal line "")
+	  (progn (setf curr-vals (append curr-vals new-vals))
+		 (setf new-vals '()))
+	  (unless (ppcre:scan "[a-zA-Z]" (subseq line 0 1))
+	    (let* ((nums (d4-1-str-to-nr-list line))
+		   (target (car nums))
+		   (source (cadr nums))
+		   (sourceend (+ source (caddr nums))))
+	      (loop for val in curr-vals do
+		(let ((a (first val))
+		      (b (second val)))
+		  (when (interval-intersectp a b source sourceend)
+		    (let ((y1 (max a source))
+			  (y2 (min b sourceend)))
+		      (setf curr-vals (remove val curr-vals :test #'equal))
+		      (when (< a source)
+			(setf curr-vals (append curr-vals (list (list a (1- source))))))
+		      (when (> b sourceend)
+		      (setf curr-vals (append curr-vals (list (list (1+ sourceend) b)))))
+		      (setf new-vals (append new-vals (list (list (+ target (- y1 source))
+								  (+ target (- y2 source)))))))))))))
+	  finally (return (reduce #'min (mapcar #'car (append curr-vals new-vals)))))))
+
+(defun interval-intersectp (start-a end-a start-b end-b)
+  (not (or (< end-b start-a)
+	   (< end-a start-b))))
+
+(defun d5-1-solution (filepath)
+  (let* ((lines (read-input-file filepath))
+	 (seeds (mapcar #'(lambda (x) (list x x))
+			(d4-1-str-to-nr-list (car lines)))))
+    (d5-parse-all seeds (cdr (cdr lines)))))
+
+(defun d5-2-solution (filepath)
+  (let* ((lines (read-input-file filepath))
+	 (seeds  (loop for (a b) on (d4-1-str-to-nr-list (car lines))
+			 by #'cddr while b
+		       collect (list a (+ a b)))))
+    (d5-parse-all seeds (cdr (cdr lines)))))
