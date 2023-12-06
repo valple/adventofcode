@@ -305,7 +305,9 @@
 		      (setf curr-vals (append curr-vals (list (list (1+ sourceend) b)))))
 		      (setf new-vals (append new-vals (list (list (+ target (- y1 source))
 								  (+ target (- y2 source)))))))))))))
-	  finally (return (reduce #'min (mapcar #'car (append curr-vals new-vals)))))))
+	  finally (return
+		    (reduce #'min
+			    (mapcar #'car (append curr-vals new-vals)))))))
 
 (defun interval-intersectp (start-a end-a start-b end-b)
   (not (or (< end-b start-a)
@@ -323,3 +325,30 @@
 			 by #'cddr while b
 		       collect (list a (+ a b)))))
     (d5-parse-all seeds (cdr (cdr lines)))))
+
+;; D6
+(defun d6-value (a b)
+  "Solve quadratic equation (a - x) * x = (b + 1), and count integer numbers between it"
+  (let* ((d (sqrt (- (/ (expt a 2) 4)
+		     (1+ (coerce b 'double-float)))))
+	 (x (ceiling (- (/ a 2) d)))
+	 (y (floor (+ (/ a 2) d))))
+    (1+ (- y x))))
+
+(defun d6-1-solution (filepath)
+  (let* ((lines (read-input-file filepath))
+	 (a (d4-1-str-to-nr-list (first lines)))
+	 (b (d4-1-str-to-nr-list (second lines))))
+    (reduce #'* (mapcar #'d6-value a b))))
+
+(defun d6-concat-nr-str (str)
+  (->> str
+    (str:replace-all " " "")
+    (ppcre:scan-to-strings "[0-9]+")
+    parse-integer))
+
+(defun d6-2-solution (filepath)
+  (let* ((lines (read-input-file filepath))
+	 (a (d6-concat-nr-str (first lines)))
+	 (b (d6-concat-nr-str (second lines))))
+    (d6-value a b)))
