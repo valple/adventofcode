@@ -352,3 +352,93 @@
 	 (a (d6-concat-nr-str (first lines)))
 	 (b (d6-concat-nr-str (second lines))))
     (d6-value a b)))
+
+;; D7
+(defun d7-input-parser (jokerp lines)
+  (mapcar #'(lambda (x) (let ((y (str:split " " x)))
+			  (list (list (first y)
+				      (if jokerp
+					  (d7-2-hand-type (first y))
+					  (d7-hand-type (first y))))
+				(parse-integer (second y)))))
+	  lines))
+
+(defun d7-hand-type (hand)
+  (let ((counts (make-hash-table :test #'equal)))
+    (loop for c across hand do
+      (if (gethash c counts)
+	  (incf (gethash c counts))
+	  (setf (gethash c counts) 1))
+	  finally (return (case (hash-table-count counts)
+			    (1 6)
+			    (2 (if (find 1 (alexandria:hash-table-values counts))
+				   5
+				   4))
+			    (3 (if (find 3 (alexandria:hash-table-values counts))
+				   3
+				   2))
+			    (4 1)
+			    (5 0))))))
+
+(defun d7-lower-value (jokerp fir-hand-str sec-hand-str)
+  (loop for x across fir-hand-str
+	for y across sec-hand-str do
+	  (let ((val (d7-issmallercard jokerp x y)))
+	    (when (not (= 0 val))
+	      (return val)))))
+
+(defun d7-issmallercard (jokerp a b)
+  (let* ((chars (coerce (if jokerp
+			    "AKQT98765432J"
+			    "AKQJT98765432") 'list))
+	 (x (position a chars))
+	 (y (position b chars)))
+    (if (>= x y)
+	(if (= x y)
+	    0
+	    1)
+	-1)))
+
+(defun d7-smaller-hand-p (jokerp first-hand second-hand)
+  (if (= (second first-hand) (second second-hand))
+      (if (= 1 (d7-lower-value jokerp
+			       (first first-hand)
+			       (first second-hand)))
+	  t
+	  nil)
+      (< (second first-hand) (second second-hand))))
+
+(defun d7-smaller-line (jokerp fline sline)
+  (d7-smaller-hand-p jokerp (first fline) (first sline)))
+
+(defun d7-sort-input (jokerp lines)
+  (sort lines #'(lambda (x y) (d7-smaller-line jokerp x y))))
+
+(defun d7-eval (lines)
+  (loop for i from 0 below (list-length lines)
+	sum (* (1+ i) (second (nth i lines)))))
+
+(defun d7-1-solution (filepath)
+  (->> filepath
+    read-input-file
+    (d7-input-parser nil)
+    (d7-sort-input nil)
+    d7-eval))
+
+(defun d7-2-hand-type (hand)
+  (if (str:containsp "J" hand)
+      (loop for s across hand
+	    maximize (if (equal s #\J)
+			 -1
+			 (d7-hand-type (str:replace-all "J" (string s) hand)))
+	      into m
+	    finally (return (if (< m 0) 6 m)))
+      (d7-hand-type hand)))
+
+(defun d7-2-solution (filepath)
+  (->> filepath
+    read-input-file
+    (d7-input-parser t)
+    (d7-sort-input t)
+    d7-eval))
+
