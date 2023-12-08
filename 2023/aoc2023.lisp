@@ -442,3 +442,94 @@
     (d7-sort-input t)
     d7-eval))
 
+;; D8
+(defun circular-nth (index seq)
+  (let ((n (mod index (length seq))))
+    (subseq seq n (1+ n))))
+
+(defun d8-parse-dir-line (str)
+  (let ((parts (ppcre:all-matches-as-strings "[A-Z]+" str)))
+    (list (first parts)
+	  (list (second parts)
+		(third parts)))))
+
+(defun d8-line-to-dict (dict elem)
+  (progn
+    (setf (gethash (first elem) dict) (second elem))
+    dict))
+
+(defun d8-parse-input (lines)
+  (let ((dir-dict (make-hash-table :test #'equal))
+	(instr (car lines)))
+    (values
+     instr
+     (-<> (cdr (cdr lines))
+       (mapcar #'d8-parse-dir-line <>)
+       (reduce #'d8-line-to-dict <> :initial-value dir-dict)))))
+
+(defun d8-apply-path (current dir dict)
+  (if (equal dir "L")
+      (first (gethash current dict))
+      (second (gethash current dict))))
+
+(defun d8-1-solution (filepath)
+  (multiple-value-bind (instr dict)
+      (->> filepath
+	read-input-file
+	d8-parse-input)
+    (let ((current "AAA")
+	  (i 0))
+      (loop while (not (equal current "ZZZ")) do
+	(progn
+	  (setf current (d8-apply-path current
+				       (circular-nth i instr)
+				       dict))
+	  (incf i))
+	finally (return i)))))
+
+(defun d8-steps-first-z (start instr dict)
+  (let ((cur start)
+	(i 0))
+    (loop while (not (and (> i 0) (equal (str:s-last cur) "A"))) do
+      (progn
+	(setf cur (d8-apply-path cur
+				 (circular-nth i instr)
+				 dict))
+	(incf i))
+	  finally (return i))))
+
+;; Disappointing way to solve it honestly
+;; Yeah it works coz
+;; time-until-first-z = time-from-first-to-second-z (with same z) = multiple of instruction length
+;; Still that's very unsatisfactory
+(defun d8-2-solution-2 (filepath)
+  (multiple-value-bind (instr dict)
+      (->> filepath
+	read-input-file
+	d8-parse-input)
+    (let* ((astr (remove-if-not #'(lambda (x) (equal (str:s-last x) "A"))
+				(alexandria:hash-table-keys dict)))
+	   (len (length astr))
+	   (current (make-array len
+				:element-type 'string
+				:initial-contents astr)))
+      (loop for cur across current
+	    collect (d8-steps-first-z cur instr dict) into reses
+	    finally (return (apply #'lcm reses))))))
+
+;;only used for some testing
+(defun d8-steps-until (start endfn instr dict)
+  (let ((cur start)
+	(i 0)
+	(steps (list start)))
+    (loop while (not (and (> i 0) (funcall endfn cur))) do
+      (progn
+	(setf cur (d8-apply-path cur
+				 (circular-nth i instr)
+				 dict))
+	(setf steps (append steps (list cur)))
+	(incf i)
+	(when (> i 1000000)
+	  (return nil)))
+	  finally (return (list i steps)))))
+
