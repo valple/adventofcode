@@ -1,6 +1,7 @@
 (defpackage :aoc2023
   (:use :cl :arrow-macros :str)
-  (:import-from :alexandria #:iota))
+  (:import-from :alexandria #:iota #:curry)
+  (:import-from :iterate #:iter))
 
 (in-package :aoc2023)
 
@@ -532,4 +533,75 @@
 	(when (> i 1000000)
 	  (return nil)))
 	  finally (return (list i steps)))))
+
+;; D9
+
+(defun d9-parse-input-line (sline)
+  (->> sline
+    (ppcre:all-matches-as-strings "[-0-9]+")
+    (mapcar #'parse-integer)))
+
+(assert (equal '(-4 -1 0 3)
+	       (d9-parse-input-line "-4 -1 0 3")))
+
+(defun d9-load-input (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar #'d9-parse-input-line)))
+
+(defun d9-diffs (num-list)
+  (loop for i from 1 below (length num-list)
+	collect (- (nth i num-list) (nth (1- i) num-list))))
+
+(defun d9-sum-last (list n)
+  (+ (car (last list)) n))
+
+(defun equalto (item &optional (pred #'eql))
+  (curry pred item))
+
+(defun d9-traverse-line (line)
+  (let ((cur line))
+    (loop while (notevery (equalto 0) cur)
+	  collect (setf cur (d9-diffs cur)) into lines
+	  finally (return (append (list line) lines)))))
+
+(defun d9-1-eval-triangle (triangle)
+  (reduce #'d9-sum-last triangle :from-end t :initial-value 0))
+
+(defun d9-eval-line (eval-fn line)
+  (->> line
+    d9-traverse-line
+    (funcall eval-fn)))
+
+(defun d9-1-all (input)
+  (->> input
+    (mapcar (curry #'d9-eval-line #'d9-1-eval-triangle))
+    (reduce #'+)))
+
+(defun d9-1-solution (filepath)
+  (->> filepath
+    d9-load-input
+    d9-1-all))
+
+(assert (= (d9-1-solution "d9-test.txt")
+	   114))
+
+(defun d9-diff-first (list n)
+  (- (car list) n))
+
+(defun d9-2-eval-triangle (triangle)
+  (reduce #'d9-diff-first triangle :from-end t :initial-value 0))
+
+(defun d9-2-all (input)
+  (->> input
+    (mapcar (curry #'d9-eval-line #'d9-2-eval-triangle))
+    (reduce #'+)))
+
+(defun d9-2-solution (filepath)
+  (->> filepath
+    d9-load-input
+    d9-2-all))
+
+(assert (= (d9-2-solution "d9-test.txt")
+	   2))
 
