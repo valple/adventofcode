@@ -1,6 +1,6 @@
 (defpackage :aoc2023
   (:use :cl :arrow-macros :str)
-  (:import-from :alexandria #:iota #:curry)
+  (:import-from :alexandria #:iota #:curry #:rcurry #:switch)
   (:import-from :iterate #:iter))
 
 (in-package :aoc2023)
@@ -556,8 +556,8 @@
 (defun d9-sum-last (list n)
   (+ (car (last list)) n))
 
-(defun equalto (item &optional (pred #'eql))
-  (curry pred item))
+(defun equalto (item &key (test #'eql))
+  (curry test item))
 
 (defun d9-traverse-line (line)
   (let ((cur line))
@@ -605,3 +605,225 @@
 (assert (= (d9-2-solution "d9-test.txt")
 	   2))
 
+;; D10
+;; The algorithm is good but the implementation rather terrible.
+;; Might clean it up later if I'm motivated.
+
+(defun d10-neighbors (grid-pos grid)
+  (d10-keep-valid-grid-points
+   (let* ((row (car grid-pos))
+	 (col (cdr grid-pos))
+	 (s (aref grid row col)))
+     (switch (s :test #'eql)
+       (#\- (list (cons row (1- col)) (cons row (1+ col))))
+       (#\| (list (cons (1- row) col) (cons (1+ row) col)))
+       (#\J (list (cons row (1- col)) (cons (1- row) col)))
+       (#\F (list (cons (1+ row) col) (cons row (1+ col))))
+       (#\L (list (cons (1- row) col) (cons row (1+ col))))
+       (#\7 (list (cons row (1- col)) (cons (1+ row) col)))
+       (#\S (list (cons row (1- col)) (cons row (1+ col))
+		  (cons (1+ row) col) (cons (1- row) col)))
+       (otherwise nil)))
+   grid))
+   
+(defun d10-connect (pos-old pos-new grid)
+  (let ((nbh (remove-if (equalto pos-old :test #'equal)
+			(d10-neighbors pos-new grid))))
+    (if (= 1 (length nbh))
+	(first nbh)
+	nil)))
+
+(defun d10-input-grid (input)
+  (make-array (list (length input)
+		    (length (first input)))
+	      :initial-contents (mapcar (rcurry #'coerce 'list) input)))
+
+(defun d10-s-pos (grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (loop for row from 0 below rows do
+      (loop for col from 0 below cols do
+	(when (eql #\S (aref grid row col))
+	  (return-from d10-s-pos (cons row col)))))))
+
+(defun d10-out-of-grid (grid-pos grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (and (between (car grid-pos) 0 (1- rows))
+	 (between (cdr grid-pos) 0 (1- cols)))))
+
+(defun d10-keep-valid-grid-points (grid-points grid)
+  (remove-if-not (rcurry #'d10-out-of-grid grid) grid-points))
+
+(defun keep-non-nil (list)
+  (remove-if-not #'identity list))
+
+(defun d10-s-valid-neighbors (sloc grid)
+  (keep-non-nil
+   (loop for n in (d10-neighbors sloc grid)
+	 collect (if (intersection (d10-neighbors n grid)
+				   (list sloc)
+				   :test #'equal)
+		     n))))
+
+(defun d10-build-loops (grid)
+  (let* ((sloc (d10-s-pos grid))
+	 (dist-table (make-hash-table :test #'equal))
+	 (next-pos (d10-s-valid-neighbors sloc grid))
+	 (cur-pos (loop for n in next-pos collect sloc))
+	 (counter 1))
+    (loop while next-pos do
+      (progn 
+	(loop for i from 0 below (length next-pos) do
+	  (if (nth i next-pos)
+	      (progn
+		(let ((x (gethash (nth i next-pos) dist-table))
+		      (newpos (d10-connect (nth i cur-pos)
+					   (nth i next-pos)
+					   grid)))
+		  (setf (gethash (nth i next-pos) dist-table)
+		    (if x (min x counter) counter))
+		  (if (eql #\S (aref grid (car newpos) (cdr newpos)))
+		      (progn
+			(setf (nth i cur-pos) nil)
+			(setf (nth i next-pos) nil))
+		  (progn  
+		    (setf (nth i cur-pos) (nth i next-pos))
+		    (setf (nth i next-pos) newpos)))))
+	      (progn (setf (nth i cur-pos) nil)
+		     (setf (nth i next-pos) nil))))
+	(setf cur-pos (keep-non-nil cur-pos))
+	(setf next-pos (keep-non-nil next-pos))
+	(incf counter))
+	  finally (return (progn (setf (gethash sloc dist-table) 0)
+				 dist-table)))))
+
+(defun d10-1-max-dist (mainloop)
+  (floor (/ (length (hash-table-count mainloop)) 2)))
+
+(defun d10-sort-loop (mainloop)
+  (sort (alexandria:hash-table-keys mainloop)
+	#'(lambda (x y)
+	    (if (< (car x) (car y))
+		t
+		(if (= (car x) (car y))
+		    (< (cdr x) (cdr y))
+		    nil)))))
+
+
+(defun d10-in (item list)
+  (find item list :test #'equal))
+
+(defun d10-2-nonloop-points (loop-keys)
+  (let ((startrow (reduce #'min (mapcar #'car loop-keys)))
+	(endrow (reduce #'max (mapcar #'car loop-keys)))
+	(startcol (reduce #'min (mapcar #'cdr loop-keys)))
+	(endcol (reduce #'max (mapcar #'cdr loop-keys))))
+   (set-difference (loop for i from startrow to endrow
+			 append
+			 (loop for j from startcol to endcol
+			       collect (cons i j)))
+		   loop-keys
+		   :test #'equal)))
+  
+
+(defun d10-pos-add (pos rowadd coladd)
+  (cons (+ (car pos) rowadd)
+	(+ (cdr pos) coladd)))
+
+(defun d10-in-direction (dir pos check-pos)
+  (switch (dir :test #'string=)
+    ("left" (and (= (car pos) (car check-pos))
+		 (< (cdr check-pos) (cdr pos))))
+    ("right" (and (= (car pos) (car check-pos))
+		  (> (cdr check-pos) (cdr pos))))
+    ("up" (and (> (car pos) (car check-pos))
+	       (= (cdr check-pos) (cdr pos))))
+    ("down" (and (< (car pos) (car check-pos))
+		 (= (cdr check-pos) (cdr pos))))))
+
+(defun d10-2-replace-s (grid)
+  (let* ((sloc (d10-s-pos grid))
+	 (nbh (d10-s-valid-neighbors sloc grid)))
+    (setf (aref grid (car sloc) (cdr sloc))
+	  (if (d10-in (d10-pos-add sloc 1 0) nbh)
+	      (if (d10-in (d10-pos-add sloc 0 1) nbh)
+		  #\F
+		  (if (d10-in (d10-pos-add sloc 0 -1) nbh)
+		      #\7
+		      #\|))
+	      (if (d10-in (d10-pos-add sloc -1 0) nbh)
+		  (if (d10-in (d10-pos-add sloc 0 1) nbh)
+		      #\L
+		      #\J)
+		  #\-)))
+    grid))
+
+;; Interior points intersect an uneven number of times
+(defun d10-count-intersections (dir grid pointset)
+  (multiple-value-bind (set1 set2)
+      (switch (dir :test #'string=)
+	("left" (values (list #\F #\| #\7)
+			(list #\J #\| #\L)))
+	("right" (values (list #\F #\| #\7)
+			 (list #\J #\| #\L)))
+	("up" (values (list #\F #\- #\L)
+		      (list #\J #\- #\7)))
+	("down" (values (list #\F #\- #\L)
+			(list #\J #\- #\7))))
+    (min 
+     (count-if #'(lambda (x)
+		   (d10-in (aref grid (car x) (cdr x)) set1)) pointset)
+     (count-if #'(lambda (x)
+		   (d10-in (aref grid (car x) (cdr x)) set2)) pointset))))
+
+(defun d10-crosses-count (pos dir loop-points grid)
+  (->> loop-points
+    (remove-if-not (curry #'d10-in-direction dir pos))
+    (d10-count-intersections dir grid)))
+
+;; Multiple directions necessary coz edges
+(defun d10-interior-point-p (pos loop-points grid)
+  (every #'oddp (list (d10-crosses-count pos "left" loop-points grid)
+		      (d10-crosses-count pos "right" loop-points grid)
+		      (d10-crosses-count pos "up" loop-points grid)
+		      (d10-crosses-count pos "down" loop-points grid))))
+  
+(defun d10-direct-nbh (point)
+  (list (d10-pos-add point 1 0)
+	(d10-pos-add point -1 0)
+	(d10-pos-add point 0 1)
+	(d10-pos-add point 0 -1)))
+
+(defun d10-direct-neighbors (item list)
+  (let ((items (list item))
+	(connected (list item)))
+    (loop while items do
+      (progn
+	(setf list (set-difference list items :test #'equal))
+	(setf items (intersection list
+				  (reduce #'append items :key #'d10-direct-nbh)))
+	(setf connected (append connected items)))
+      finally (return (values connected list)))))
+
+;; It suffices to check a single representant for every connected component
+(defun d10-count-interior-points (mainloop grid)
+  (let* ((loop-points (alexandria:hash-table-keys mainloop))
+	(non-loop-points (d10-2-nonloop-points
+			  loop-points))
+	(interior-points 0))
+    (loop while non-loop-points do
+      (let ((point (first non-loop-points)))
+	(multiple-value-bind (connected list)
+	    (d10-direct-neighbors point non-loop-points)
+	  (progn
+	    (when (d10-interior-point-p point loop-points grid)
+	      (incf interior-points (length connected)))
+	    (setf non-loop-points list))))
+	  finally (return interior-points))))
+
+(defun d10-2-solution (filepath)
+  (let* ((grid (d10-input-grid (read-input-file filepath)))
+	 (mainloop (d10-build-loops grid)))
+    (d10-count-interior-points mainloop
+			       (d10-2-replace-s grid))))
