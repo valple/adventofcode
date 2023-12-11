@@ -9,6 +9,12 @@
 (defun read-input-file (filepath)
   (uiop:read-file-lines filepath))
 
+(defun transpose-list-of-lists (list)
+  (apply #'mapcar #'list list))
+
+(defun print-solution (filepath fun)
+  (format t "The solution is: ~a" (funcall fun filepath)))
+
 ;; D1
 (defun d1-line-value (line)
   (->> line
@@ -26,9 +32,6 @@
     read-input-file
     (mapcar #'d1-line-value)
     (reduce #'+)))
-
-(defun print-solution (filepath fun)
-  (format t "The solution is: ~a" (funcall fun filepath)))
 
 (defun print-d1-1-solution ()
   (print-solution "d1.txt" #'d1-1-solution))
@@ -827,3 +830,121 @@
 	 (mainloop (d10-build-loops grid)))
     (d10-count-interior-points mainloop
 			       (d10-2-replace-s grid))))
+
+;; D11
+(defun d11-read-input (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar (rcurry #'coerce 'list))
+    (funcall #'(lambda (x) (make-array (list (length x)
+					     (length (first x)))
+				       :initial-contents x)))))
+
+(defun d11-expandlocs (grid)
+  (destructuring-bind (i j) (array-dimensions grid)
+    (values 
+     (remove-if
+      #'(lambda (x)
+	  (loop for c from 0 below j do
+	    (when (eql (aref grid x c) #\#)
+	      (return t))
+		finally (return nil)))
+      (iota i))
+     (remove-if
+      #'(lambda (x)
+	  (loop for r from 0 below i do
+	    (when (eql (aref grid r x) #\#)
+	      (return t))
+		finally (return nil)))
+      (iota j)))))
+	
+(defun apply-tuple-pointwise (a b f)
+  (cons (funcall f (car a) (car b))
+	(funcall f (cdr a) (cdr b))))
+
+(defun add-tuples (a b)
+  (apply-tuple-pointwise a b #'+))
+
+(defun sub-tuples (a b)
+  (apply-tuple-pointwise a b #'-))
+
+(defun abs-tuple (a)
+  (+ (abs (car a)) (abs (cdr a))))
+
+(defun d11-dist (a b)
+  (let ((p (sub-tuples b a)))
+    (abs-tuple p)))
+
+(defun d11-points (grid)
+  (let ((points nil))
+    (loop for r from 0 below (array-dimension grid 0) do
+      (loop for c from 0 below (array-dimension grid 1) do
+	(when (eql #\# (aref grid r c))
+	  (setf points (append points (list (cons r c))))))
+	  finally (return points))))
+
+(defun d11-distances (points)
+  (let ((dists nil)
+	(last-point (car points)))
+    (loop for p in (cdr points) do
+      (progn
+	(setf dists (append dists (list (list last-point (list (sub-tuples p last-point))))))
+	(setf last-point p))
+	  finally (return dists))))
+
+(defun d11-cumulative-extend (distances)
+  ;;(if (= 1 (length distances))
+   ;;   distances
+      (let ((origin (caar distances)))
+	(list origin
+	      (reduce #'(lambda (list dist)
+			  (append list (list (add-tuples (car (last list)) (caadr dist)))))
+		      (cdr distances)
+		      :initial-value (cadr (car distances))))))
+
+(defun d11-extend-distances (distances)
+  (loop for i below (length distances)
+	append (list (d11-cumulative-extend (nthcdr i distances)))))
+
+(defun d11-distance-expanded (p q expandrows expandcols expandsize)
+  (let* ((minr (min (car p) (car q)))
+	 (maxr (max (car p) (car q)))
+	 (minc (min (cdr p) (cdr q)))
+	 (maxc (max (cdr p) (cdr q)))
+	 (row-intersects (length (remove-if-not
+				 (rcurry #'between minr maxr)
+				 expandrows)))
+	(col-intersects (length (remove-if-not
+				 (rcurry #'between minc maxc)
+				 expandcols)))
+	(dist (sub-tuples q p)))
+    (cons (+ (car dist) (* (signum (car dist)) row-intersects expandsize))
+	  (+ (cdr dist) (* (signum (cdr dist)) col-intersects expandsize)))))
+
+(defun d11-expanded-size (origin dist expandrows expandcols expandsize)
+  (d11-distance-expanded origin (add-tuples origin dist) expandrows expandcols expandsize))
+
+(defun d11-sum-distances (origin distances expandrows expandcols expandsize)
+  (loop for d in distances
+	sum (abs-tuple
+	     (d11-expanded-size origin d expandrows expandcols expandsize))))
+
+(defun d11-sum-distances-all (distancelist expandrows expandcols expandsize)
+  (loop for distances in distancelist
+	sum (d11-sum-distances (car distances) (cadr distances) expandrows expandcols expandsize)))
+
+(defun d11-solution (filepath expandsize)
+  (let ((grid (d11-read-input filepath)))
+    (multiple-value-bind (rows cols)
+	(d11-expandlocs grid)
+      (-> grid
+	d11-points
+	d11-distances
+	d11-extend-distances
+	(d11-sum-distances-all rows cols expandsize)))))
+   
+(defun d11-1-solution (filepath)
+  (d11-solution filepath 1))
+
+(defun d11-2-solution (filepath)
+  (d11-solution filepath 999999))
