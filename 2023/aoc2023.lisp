@@ -1514,16 +1514,6 @@
 (defun d16-energised-panels (start-pos start-dir grid)
   (hash-table-count (d16-energise start-pos start-dir grid)))
 
-(defun d16-corner-p (rows cols i j)
-  (if (= 0 i)
-      (if (or (= j 0) (= j (1- cols)))
-	  t
-	  nil)
-      (if (= (1- rows) i)
-	  (if (or (= j 0) (= j (1- cols)))
-	      t
-	      nil))))
-
 ;; I probably could fiddle with the dictionary output to get a fast and elegant solution.
 ;; Too lazy for that now and it doesn't take that long to run (3 min)
 ;; Ok that's actually long but I'll think about it another day
