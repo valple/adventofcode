@@ -1418,3 +1418,139 @@
     d15-2-strs-to-triples
     d15-2-parse-all
     d15-2-eval-dict))
+
+;; D16
+(defun d16-load-grid (filepath)
+  (->> filepath
+    read-input-file
+    d10-input-grid))
+
+(defun inc-or-1 (n)
+  (if n
+      (1+ n)
+      1))
+
+(defun between-c (cgridsize cnr)
+  (and (between (realpart cnr) 0 (1- (realpart cgridsize)))
+       (between (imagpart cnr) (1+ (imagpart cgridsize)) 0)))
+
+(defun d16-char-to-new-dir (char dir)
+  (alexandria:switch (char :test #'eql)
+    (#\\ (- (complex (imagpart dir) (realpart dir))))
+    (#\/ (complex (imagpart dir) (realpart dir)))
+    (otherwise dir)))
+
+;; a nice and easily debuggable function
+(defun d16-energise (start-pos start-dir grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (let ((positions (list (list start-pos start-dir)))
+	  (visited (make-hash-table))
+	  (in-grid-p (curry #'between-c (complex cols (- rows)))))
+      (setf (gethash start-pos visited) (list start-dir)) ;; for completeness
+      (loop while positions do
+	(let* ((pos (pop positions))
+	       (dir (second pos))
+	       (p (first pos))
+	       (cur nil)
+	       (symb (aref grid (- (imagpart p)) (realpart p))))
+	  (cond ((or (eql symb #\/) (eql symb #\\) (eql symb #\.)
+		     (and (eql symb #\|) (= 0 (realpart dir)))
+		     (and (eql symb #\-) (= 0 (imagpart dir))))
+		 (progn (setf dir (d16-char-to-new-dir symb dir))
+			(setf cur (+ p dir))
+			(when (and (funcall in-grid-p cur) (not (find dir
+								      (gethash cur visited))))
+			  (progn (push (list cur dir) positions)
+				 (setf (gethash cur visited)
+				       (push dir (gethash cur visited)))))))
+		((eql symb #\-)
+		 (let* ((dir1 #C(1 0))
+		       (dir2 #C(-1 0))
+		       (p1 (+ p dir1))
+		       (p2 (+ p dir2)))
+		   (when (funcall in-grid-p p1)
+		     (when (not (find dir1
+				      (gethash p1 visited)
+				      :test #'equal))
+		       (progn (push (list p1 dir1) positions)
+			      (setf (gethash p1 visited)
+				    (push dir1 (gethash p1 visited))))))
+		   (when (funcall in-grid-p p2)
+		     (when (not (find dir2
+				      (gethash p2 visited)
+				      :test #'equal))
+		       (progn (push (list p2 dir2) positions)
+			      (setf (gethash p2 visited)
+				    (push dir2 (gethash p2 visited))))))))
+		((eql symb #\|)
+		 (let* ((dir1 #C(0 1))
+			(dir2 #C(0 -1))
+			(p1 (+ p dir1))
+			(p2 (+ p dir2)))
+		   (when (funcall in-grid-p p1)
+		     (when (not (find dir1
+				      (gethash p1 visited)
+				      :test #'equal))
+		       (progn (push (list p1 dir1) positions)
+			    (setf (gethash p1 visited)
+				  (push dir1 (gethash p1 visited))))))
+		   (when (funcall in-grid-p p2)
+		       (when (not (find dir2
+					(gethash p2 visited)
+					:test #'equal))
+			 (progn (push (list p2 dir2) positions)
+				(setf (gethash p2 visited)
+				      (push dir2 (gethash p2 visited))))))))
+		(t (format t "WHATTTT?~%")))))
+      visited)))
+		
+(defun d16-1-solution (filepath)
+  (->> filepath
+    d16-load-grid
+    (d16-energise #C(0 0) #C(1 0))
+    hash-table-count))
+
+(defun d16-energised-panels (start-pos start-dir grid)
+  (hash-table-count (d16-energise start-pos start-dir grid)))
+
+(defun d16-corner-p (rows cols i j)
+  (if (= 0 i)
+      (if (or (= j 0) (= j (1- cols)))
+	  t
+	  nil)
+      (if (= (1- rows) i)
+	  (if (or (= j 0) (= j (1- cols)))
+	      t
+	      nil))))
+
+;; I probably could fiddle with the dictionary output to get a fast and elegant solution.
+;; Too lazy for that now and it doesn't take that long to run (3 min)
+;; Ok that's actually long but I'll think about it another day
+(defun d16-test-configs (grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (let ((reses nil)
+	  (energise (rcurry #'d16-energised-panels grid))
+	  (dirs nil))
+      (loop for i from 0 below rows maximize
+	(loop for j from 0 below cols
+	      maximize
+	      (if (or (= i 0) (= 0 j) (= i (1- rows)) (= j (1- cols)))
+		(progn 
+		  (when (= 0 i)
+		    (setf dirs (append dirs (list #C(0 -1)))))
+		  (when (= 0 j)
+		    (setf dirs (append dirs (list #C(1 0)))))
+		  (when (= (1- rows) i)
+		    (setf dirs (append dirs (list #C(0 1)))))
+		  (when (= (1- cols) j)
+		    (setf dirs (append dirs (list #C(-1 0)))))
+		  (loop for dir in dirs maximize (funcall energise (complex j (- i)) dir)))
+		0))))))
+
+(defun d16-2-solution (filepath)
+   (->> filepath
+     d16-load-grid
+     d16-test-configs))
+
