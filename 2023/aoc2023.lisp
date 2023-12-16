@@ -948,3 +948,473 @@
 
 (defun d11-2-solution (filepath)
   (d11-solution filepath 999999))
+
+;; D12
+
+(defun d12-parse-line (raw-line)
+  (-<>> raw-line
+    (str:split " ")
+    (list (car <>)
+	  (d4-1-str-to-nr-list (cadr <>)))))
+
+(defun d12-read-input (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar #'d12-parse-line)))
+
+(defun d12-groups-to-regex (groups)
+  (->> groups
+    (mapcar #'(lambda (x) (str:concat "[?|#]{" (write-to-string x) "}")))
+    (reduce #'(lambda (x y)
+		(str:concat x "[.|?]+" y)))
+    (funcall #'(lambda (y)
+		 (str:concat "^[^#]*" y "[^#]*$")))))
+
+(defun d12-surround-str (str s)
+  (str:concat s str s))
+
+(defun d12-get-matches (str reg)
+  (let ((match-fun (curry
+		    #'ppcre:scan reg))
+	(valid-strings (list str)))
+    (ppcre:do-matches (start end "[?]" str)
+      (setf valid-strings
+	    (remove-if-not match-fun
+			   (alexandria:flatten
+			    (loop for s in valid-strings
+				  collect (list (substitute #\. #\? s :start start :end end)
+						(substitute #\# #\? s :start start :end end)))))))
+    valid-strings))
+
+(defun d12-get-matches-groups (str groups)
+  (d12-get-matches str
+		   (d12-groups-to-regex groups)))
+
+(defun d12-line-matches (line)
+  (d12-get-matches-groups (car line)
+			  (cadr line)))
+
+(defun d12-count-matches (lines)
+  (->> lines
+    (mapcar #'d12-line-matches)
+    (mapcar #'length)
+    (reduce #'+)))
+
+(defun d12-2-firstsecond (lines)
+  (loop for line in lines
+	collect (list (length (d12-line-matches line))
+		      (length (d12-get-matches-groups
+			       (str:concat (car line) "?" (car line))
+			       (append (cadr line) (cadr line)))))))
+;;		      (length (d12-get-matches-groups
+;;			       (str:concat (car line) "?" (car line) "?" (car line))
+;;			       (append (cadr line) (cadr line) (cadr line)))))))
+
+(defun d12-nth-fold-brute-force (line i)
+  (d12-get-matches-groups
+   (reduce #'(lambda (x y) (str:concat x "?" y))
+	   (loop for i from 1 to i collect (car line)))
+   (loop for j from 1 to i
+	 append (cadr line))))
+
+;; Doesn't work for many
+(defun d12-2-deduce-count (tuples)
+  (->> tuples 
+    (mapcar #'(lambda (x)
+	      (let* ((c1 (car x))
+		     (c2 (cadr x))
+		     (factor (/ c2 c1)))
+		(* c1 (expt factor 4)))))))
+   ;; (reduce #'+)))
+
+(defun d12-with-qmark (line)
+  (list (length (d12-line-matches line))
+	(length (d12-get-matches-groups
+		 (str:concat (car line) "?")
+		 (cadr line)))
+	(length (d12-get-matches-groups
+		 (str:concat "?" (car line))
+			       (cadr line)))))
+
+(defun arst (s)
+  (position #\# s :from-end t))
+
+
+(defun d12-extraqm (str groups n)
+  (d12-get-matches-groups (reduce #'str:concat
+				  (loop for i from 1 to n
+					collect "?" into k
+					finally (return (append k (list str)))))
+			  groups))
+
+(defun d12-match-extend (str groups match)
+  (let* ((pos (arst match))
+	 (len (length str))
+	 (lastnon? (car (last (cl-ppcre:all-matches "[^?]" str))))
+	 (cutoff (min (max (+ 2 pos) (1+ lastnon?)) len))
+	 (matchpart (str:concat (subseq match 0 cutoff)
+				(if (and (= cutoff len)
+					 (equal (subseq match (1- cutoff) cutoff) "#"))
+				    "."
+				    "")))
+	 (extra? (if (and (= cutoff len)
+			  (equal (subseq match (1- cutoff) cutoff) "#"))
+		     0
+		     (1+ (- len cutoff)))))
+    (mapcar (curry #'str:concat matchpart)
+	    (d12-extraqm str groups extra?))))
+
+(defun d12-count-trailing-qm (str match)
+  (let* ((pos (arst match))
+	 (len (length str))
+	 (lastnon? (car (last (cl-ppcre:all-matches "[^?]" str))))
+	 (cutoff (min (max (+ 2 pos) (1+ lastnon?)) len)))
+    (if (and (= cutoff len)
+	     (equal (subseq match (1- cutoff) cutoff) "#"))
+	0
+	(1+ (- len cutoff)))))
+
+(defun d12-count-leading-qm (str match)
+  (d12-count-trailing-qm (reverse str) (reverse match)))
+
+(defun d12-sort-matches (str matches)
+  (let ((counts (make-hash-table :test #'equal)))
+    (loop for match in matches do
+      (let* ((leading (d12-count-leading-qm str match))
+	    (trailing (d12-count-trailing-qm str match))
+	    (count (gethash (cons leading trailing) counts)))
+	(setf (gethash (cons leading trailing) counts )
+	      (if count
+		  (1+ count)
+		  1))))
+    counts))
+
+(defun d12-test (str groups)
+  (let ((matches (d12-get-matches-groups str groups)))
+    (alexandria:flatten
+     (loop for match in matches
+	   collect (list (d12-match-extend str groups match)
+			 (mapcar #'reverse (d12-match-extend (reverse str)
+							     (reverse groups)
+							     (reverse match))))))))
+
+(defun d12-testline (line)
+  (d12-test (car line)
+	    (cadr line)))
+
+
+
+
+(defun d12-2-line-fancy (line)
+  (let* ((str (car line))
+	 (last (subseq str (1- (length str)) (length str)))
+	 (first (subseq str 0 1))
+	 (groups (cadr line)))
+    (cond
+      ((equal last ".")
+       (* (length (d12-get-matches-groups str groups))
+	  (expt (length (d12-get-matches-groups
+			 (str:concat "?" str) groups))
+		4)))
+      ((equal first ".")
+       (* (length (d12-get-matches-groups str groups))
+	  (expt (length (d12-get-matches-groups
+			 (str:concat str "?")  groups))
+		4)))
+      ((and (equal first "#") (equal last "#"))
+       (expt (length (d12-get-matches-groups
+		      (str:concat str)  groups))
+	     5)))
+      ))
+    
+(defun d12-brute-force (line)
+  (length 
+   (d12-line-matches
+    (list (reduce #'(lambda (x y) (str:concat x "?" y))
+		  (loop for i from 0 to 4 collect (car line)))
+	  (loop for i from 0 to 4 append (cadr line))))))
+
+
+(defun d12-brute-force-count-all (lines)
+   (->> lines
+    (mapcar #'d12-brute-force)
+    (reduce #'+)))
+  
+(defun cartesian-str-concat(lista listb)
+  (loop for i in lista
+	nconc (loop for j in listb
+		    collect (str:concat i "?" j))))
+
+(defun d12-2-extendstr (list &optional (times 5))
+  (reduce #'cartesian-str-concat (loop for i from 0 below times collect list)))
+
+(defun d12-2-parse-line (line)
+  (let ((reg (d12-groups-to-regex
+	      (loop for i from 0 to 4 append (cadr line))))
+	(matches (d12-line-matches line)))
+    (remove-if-not (curry #'ppcre:scan reg)
+		   (d12-2-extendstr matches))))
+
+;; D13
+
+(defun d13-str-list-to-grid (lines)
+  (let ((rows (length lines))
+	(cols (length (car lines))))
+    (make-array (list rows cols)
+		:initial-contents (mapcar (rcurry #'coerce 'list) lines))))
+
+(defun d13-parse-input (lines)
+  (let ((grids nil)
+	(lastpos 0))
+    (loop for line in lines
+	  for i from 0 below (length lines) do
+      (when (equal line "")
+	(progn
+	  (push (d13-str-list-to-grid (subseq lines lastpos i)) grids)
+	  (setf lastpos (1+ i)))))
+    (push (d13-str-list-to-grid (subseq lines lastpos)) grids)
+    grids))
+
+(defun d13-parse-input2 (lines)
+  (let ((grids nil)
+	(lastpos 0))
+    (loop for line in lines
+	  for i from 0 below (length lines) do
+      (when (equal line "")
+	(progn
+	  (push (subseq lines lastpos i) grids)
+	  (setf lastpos (1+ i)))))
+    (push (subseq lines lastpos) grids)
+    (mapcar #'(lambda (x)
+		(mapcar (rcurry #'coerce 'list) x)) grids)))
+
+(defun d13-h-match-grug (grid n)
+  (if (< n (length grid))
+      (loop for i from 1 to (min n (- (length grid) n)) do
+	(when (not (equal (nth (- n i) grid)
+			  (nth (+ (1- n) i) grid)))
+	  (return nil))
+	    finally (return t))
+      nil))
+
+(defun d13-v-match-grug (grid n)
+  (d13-h-match-grug (transpose-list-of-lists grid) n))
+
+(defun d13-find-match-grug (grid)
+  (loop for i from 1 below (max (length grid) (length (car grid)))
+	if (d13-h-match-grug grid i)
+	  do (return (* i 100))
+	if (d13-v-match-grug grid i)
+	  do (return i)))
+
+(defun d13-1-solution-grug (filepath)
+  (->> filepath
+    read-input-file
+    d13-parse-input2
+    (mapcar #'d13-find-match-grug)
+    (reduce #'+)))
+
+
+;; D14
+(defun d14-parse-input (lines)
+  (first (d13-parse-input lines)))
+
+(defun d14-load-grid (filepath)
+  (d14-parse-input (read-input-file filepath)))
+
+(defun d14-count-rocks-and-pillars (grid col)
+  (loop for row from 0 below (array-dimension grid 0)
+	when (eql (aref grid row col) #\O)
+	  collect row into rocks
+	end
+	if (eql (aref grid row col) #\#)
+	  collect row into pillars
+	end
+	finally (return (values (append  (list -1)
+				       pillars
+				       (list (array-dimension grid 0)))
+			      rocks))))
+
+;; Changes the incoming array
+(defun d14-tilt-north (grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (loop for col from 0 below cols do
+      (multiple-value-bind (pillars rocks)
+	  (d14-count-rocks-and-pillars grid col)
+	(loop for plow from 0 below (1- (length pillars))
+	      for phigh from 1 to (1- (length pillars)) do
+		(let ((firstp (nth plow pillars))
+		      (secondp (nth phigh pillars))
+		      (count (count-if
+			      (rcurry #'between
+				      (nth plow pillars)
+				      (nth phigh pillars))
+			      rocks)))
+		  (loop for j from (1+ firstp) below secondp
+			for i from 1 below (- secondp firstp)
+			if (<= i count)
+			  do (setf (aref grid j col) #\O)
+			else
+			  do (setf (aref grid j col) #\.)
+			end))))
+	  finally (return grid))))
+
+;; Would be better to change the tilt functions instead of making a new grid with every turn
+;; But I'm lazy
+(defun d14-cycle (grid n)
+  (let ((awesomegrid (alexandria:copy-array grid))
+	(cursum 0))
+    (loop for i from 1 to n collect 
+      (progn (setf awesomegrid (-> awesomegrid
+				 d14-tilt-north
+				 (aops:turn 1)
+				 d14-tilt-north
+				 (aops:turn 1)
+				 d14-tilt-north
+				 (aops:turn 1)
+				 d14-tilt-north
+				   (aops:turn 1)))
+	    ;; (when (> i 100)
+	     (let ((val (d14-eval-grid awesomegrid)))
+	       (setf cursum (+ cursum val))
+	       ;;(format t "Run ~a: ~a, ~$~%" i val (/ cursum (- i 100)) )))))
+	       (list i val (/ cursum i)))))))
+
+(defun d14-eval-grid (grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (loop for j from 0 below cols
+	  sum (loop for i from 0 below rows
+		    sum (* (- cols i) (if (eql (aref grid i j) #\O)
+					  1
+					  0))))))
+
+(defun d14-1-solution (filepath)
+  (->> filepath
+    read-input-file
+    d14-parse-input
+    d14-tilt-north
+    d14-eval-grid))
+
+(defun count-occurences (list select-fn &key (test #'eql))
+  (let ((count-dict (make-hash-table :test test)))
+    (loop for item in list do
+      (let* ((y (funcall select-fn item))
+	     (x (gethash y count-dict)))
+	(if x
+	    (incf (gethash y count-dict))
+	    (setf (gethash y count-dict) 1))))
+    (loop for key being the hash-key of count-dict
+	  collect (list key (gethash key count-dict)))))
+
+(defun d14-spacing (triples)
+  (let* ((occurences (count-occurences triples #'second))
+	 (candidates (mapcar #'first (remove-if-not #'(lambda (x) (> (second x) 100)) occurences))))
+    (loop for c in candidates
+	  collect (let ((cseq (remove-if-not #'(lambda (x) (= c (second x))) triples)))
+		    (list (subseq (nth (1- (length cseq)) cseq) 0 2)
+			  (- (first (nth (1- (length cseq)) cseq))
+			     (first (nth (- (length cseq) 2) cseq))))))))
+
+(defun d14-period (spacing)
+  (let ((common-spacing
+	  (-> spacing
+	    (count-occurences #'second :test #'equal)
+	    (sort #'(lambda (x y) (> (second x) (second y))))
+	    caar)))
+    (find-if #'(lambda (x) (= (second x) common-spacing)) spacing)))
+
+;; Could use less cycles but then it doesn't work well for the testset
+;; This takes a while but statistically should give the good result
+(defun d14-2-deduce-solution (grid)
+  (let* ((some-values (d14-cycle grid 10000))
+	 (period (d14-period (d14-spacing some-values)))
+	 (period-end (caar period))
+	 (period-size (second period))
+	 (diff (nth-value 1 (ceiling (- 1000000000 period-end)
+				     period-size))))
+    (second (nth (1- (+ diff period-end)) some-values))))
+
+(defun d14-2-solution (filepath)
+  (->> filepath
+    d14-load-grid
+    d14-2-deduce-solution))
+
+;; Day 15
+(defun d15-read-input (filepath)
+  (->> filepath
+    uiop:read-file-string
+    (str:split ",")
+    (mapcar #'str:trim)))
+
+(defun d15-strs-to-char-codes (strs)
+  (->> strs 
+    (mapcar (rcurry #'coerce 'list))
+    (mapcar (curry #'mapcar #'char-code))))
+
+(defun d15-parse-chunk (value charcodes)
+  (loop for code in charcodes do
+    (setf value (rem (* 17 (+ value code)) 256))
+	finally (return value)))
+
+(defun d15-1-solution (filepath)
+  (-<>> filepath
+    d15-read-input
+    d15-strs-to-char-codes
+    (mapcar (curry #'d15-parse-chunk 0))
+    (reduce #'+)))
+
+(defun d15-2-split-chunk (str)
+  (let ((labellens (ppcre:split "=|-" str)))
+    (list (first labellens)
+	  (ppcre:scan-to-strings "=|-" str)
+	  (second labellens))))
+
+(defun d15-hashfn (str)
+  (->> str
+    list
+    d15-strs-to-char-codes
+    first
+    (d15-parse-chunk 0)))
+
+(defun d15-2-strs-to-triples (strs)
+  (mapcar #'d15-2-split-chunk strs))
+
+(defun d15-2-parse-all (triples)
+  (let ((boxes (make-hash-table)))
+    (loop for triple in triples do
+      (let* ((label (first triple))
+	    (symb (second triple))
+	    (lens (nth 2 triple))
+	    (hash (d15-hashfn label)))
+	(cond ((equal symb "-")
+	       (setf (gethash hash boxes)
+		     (remove-if #'(lambda (x) (equal (first x) label))
+				(gethash hash boxes))))
+	      ((equal symb "=")
+	       (setf (gethash hash boxes)
+		     (let* ((curstack (gethash hash boxes))
+			    (pos (position-if #'(lambda (x) (equal (first x) label)) curstack)))
+		       (if pos
+			   (progn (setf (nth pos curstack) (cons label lens))
+				  curstack)
+			   (append curstack (list (cons label lens))))))))))
+    boxes))
+
+
+(defun d15-2-eval-dict (boxes)
+  (loop for boxnr being the hash-key of boxes
+	sum (let ((lenses (mapcar #'cdr (gethash boxnr boxes))))
+	      (if lenses
+		  (loop for l in lenses
+			for n from 1 to (length lenses)
+			sum (* n (parse-integer l) (1+ boxnr)))
+		  0))))
+
+(defun d15-2-solution (filepath)
+  (->> filepath
+    d15-read-input
+    d15-2-strs-to-triples
+    d15-2-parse-all
+    d15-2-eval-dict))
