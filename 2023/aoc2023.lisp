@@ -1544,3 +1544,114 @@
      d16-load-grid
      d16-test-configs))
 
+;; Day 17
+(defun d17-load-grid (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar (curry #'ppcre:all-matches-as-strings "[1-9]"))
+    (mapcar (curry #'mapcar #'parse-integer))
+    #'(lambda (x) (make-array (list (length x)
+				    (length (car x)))
+			      :initial-contents x))))
+
+(defstruct (Heat-point (:conc-name hp-))
+  point
+  dir
+  counter
+  heat)
+
+(defun make-hp (point dir counter heat)
+  (make-heat-point
+   :point point
+   :dir dir
+   :counter counter
+   :heat heat))
+
+(defun d17-hp-neighbors (hp grid)
+ (destructuring-bind (rows cols)
+     (array-dimensions grid)
+   (remove-if-not #'identity 
+		  (loop for dir in (list #C(1 0) #C(0 1) #C(-1 0) #C(0 -1))
+			collect
+			(let ((olddir (hp-dir hp))
+			      (newp (+ (hp-point hp) dir)))
+			  (when (and (not (= olddir (- dir)))
+				     (between-c (complex cols (- rows)) newp)
+				     (not (and (= olddir dir) (> (hp-counter hp) 2))))
+			    (make-hp newp
+				     dir
+				     (if (= dir olddir) (1+ (hp-counter hp)) 1)
+				     (+ (aref grid (- (imagpart newp)) (realpart newp))
+					(hp-heat hp)))))))))
+  
+(defun d17-hashfn (hp)
+  (list (hp-point hp)
+	(hp-dir hp)
+	(hp-counter hp)))
+
+(defun d17-cnr-size (cnr)
+  (+ (abs (imagpart cnr)) (abs (realpart cnr))))
+
+;; slow, very slow, takes many minutes, especially for part 2
+;; Generally keeping track of both location, dir and countre for mapping to the heatsum
+;; might be too much but I imagine it's necessary to keep track of that in some way
+;; I want to avoid looking up any information on algorithms etc. so there might be
+;; some obvious bottlenecks in there.
+(defun d17-traverse (nb-fn part2-cutoff grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (let ((gridsize (complex cols (- rows)))
+	  (factor 2)
+	  (candidates (list (make-hp #C(0 0) #C(0 -1) 0 0) (make-hp #C(0 0) #C(1 0) 0 0)))
+	  (heatsum-dict (make-hash-table :test #'equal))
+	  (result nil)
+	  )
+      (loop while (not result) do
+	(let* ((current (pop candidates))
+	       (neighbors (funcall nb-fn current grid)))
+	  (format t "~a~%" current)
+	  (loop for n in neighbors do
+	    (let ((heat(gethash (d17-hashfn n) heatsum-dict)))
+	      (unless (and heat (<= heat (hp-heat n)))
+		(progn (setf (gethash (d17-hashfn n) heatsum-dict) (hp-heat n))
+		       (push n candidates)
+		       (when (and (>= (hp-counter n) part2-cutoff)
+				  (= (hp-point n) (- gridsize #C(1 -1))))
+			   (setf result (hp-heat n)))))))
+	  (setf candidates (sort candidates #'(lambda (x y) (< (+ (hp-heat x)
+								  (* factor (d17-cnr-size (- gridsize (hp-point x)))))
+							       (+ (hp-heat y)
+								  (* factor (d17-cnr-size (- gridsize (hp-point y)))))))))))
+	  (values heatsum-dict result))))
+
+
+(defun d17-1-solution (filepath)
+  (->> filepath
+    d17-load-grid
+    (d17-traverse #'d17-hp-neighbors 0)
+    (nth-value 1)))
+
+;; why improve it when you can copy-paste with minimal changes...
+(defun d17-2-hp-neighbors (hp grid)
+ (destructuring-bind (rows cols)
+     (array-dimensions grid)
+   (remove-if-not #'identity 
+		  (loop for dir in (list #C(1 0) #C(0 1) #C(-1 0) #C(0 -1))
+			collect
+			(let ((olddir (hp-dir hp))
+			      (newp (+ (hp-point hp) dir)))
+			  (when (and (not (= olddir (- dir)))
+				     (between-c (complex cols (- rows)) newp)
+				     (not (and (not (= dir olddir)) (< (hp-counter hp) 4)))
+				     (not (and (= olddir dir) (> (hp-counter hp) 9))))
+			    (make-hp newp
+				     dir
+				     (if (= dir olddir) (1+ (hp-counter hp)) 1)
+				     (+ (aref grid (- (imagpart newp)) (realpart newp))
+					(hp-heat hp)))))))))
+ 
+(defun d17-2-solution (filepath)
+  (->> filepath
+    d17-load-grid
+    (d17-traverse #'d17-2-hp-neighbors 4)
+    (nth-value 1)))
