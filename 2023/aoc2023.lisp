@@ -1655,3 +1655,344 @@
     d17-load-grid
     (d17-traverse #'d17-2-hp-neighbors 4)
     (nth-value 1)))
+
+;; D18
+
+(defstruct (d18-instr (:conc-name instr-))
+  dir
+  len
+  colour)
+
+(defun d18-make-instr (dir len colour)
+  (make-d18-instr :dir (d18-dir-to-cnr dir)
+		  :len len
+		  :colour colour))
+
+(defun d18-load-input (filepath)
+  (->> filepath
+    read-input-file
+    (mapcar (curry #'str:split " "))
+    (mapcar #'(lambda (x)
+		(d18-make-instr
+		 (car x)
+		 (parse-integer (cadr x))
+		 (ppcre:regex-replace-all "[(|)]" (caddr x) ""))))))
+
+(defun d18-estimate-grid-size (structs)
+  (let ((pairs (mapcar #'(lambda (x) (list (instr-dir x) (instr-len x))) structs))
+	(l 0)
+	(r 0)
+	(u 0)
+	(d 0))
+    (loop for pair in pairs do
+	 (cond ((= (car pair) #C(1 0))
+		(setf r (+ r (cadr pair))))
+	       ((= (car pair) #C(-1 0))
+		(setf l (+ l (cadr pair))))
+	       ((= (car pair) #C(0 1))
+		(setf u (+ u (cadr pair))))
+	       ((= (car pair) #C(0 -1))
+		(setf d (+ d (cadr pair)))))
+	  finally (return (values (+ 1 u d) (+ 1 l r) d l)))))
+
+(defun d18-dir-to-cnr (dir)
+  (alexandria:switch (dir :test #'equal)
+    ("R" #C(1 0))
+    ("L" #C(-1 0))
+    ("U" #C(0 1))
+    ("D" #C(0 -1))))
+
+(defmacro caref (grid cnr)
+  (list 'aref grid (list '- (list 'imagpart cnr)) (list 'realpart cnr)))
+
+
+(defun d18-dig (structs)
+  (multiple-value-bind (rows cols startrow startcol)
+      (d18-estimate-grid-size structs)
+    (let ((grid (make-array (list rows cols) :initial-element "."))
+	  (cur-pos (complex startcol (- startrow))))
+      (setf (caref grid cur-pos) "#")
+      (loop for s in structs do
+	(loop for i from 1 to (instr-len s) do
+	  (setf (caref grid (+ cur-pos (* i (instr-dir s))))
+		(instr-colour s))
+	      finally (setf cur-pos (+ cur-pos (* (instr-dir s) (instr-len s))))))
+      grid)))
+
+(defun d18-interior-p (grid p)
+  (and
+   (let ((count 0)
+	 (current "."))
+     (loop for i from 1 below (- (array-dimension grid 1) (realpart p)) do
+      (let ((x (subseq (caref grid (+ p (complex i 0))) 0 1)))
+	(when (not (equal x current))
+	  (progn (when (equal x "#")
+		   (incf count))
+		 (setf current x))))
+	   finally (return (oddp count))))
+   (let ((count 0)
+	 (current "."))
+     (loop for i from 1 to (realpart p) do
+      (let ((x (subseq (caref grid (- p (complex i 0))) 0 1)))
+	(when (not (equal x current))
+	  (progn (when (equal x "#")
+		   (incf count))
+		 (setf current x))))
+	   finally (return (oddp count))))
+   (let ((count 0)
+	 (current "."))
+     (loop for i from 1 below (- (array-dimension grid 0) (- (imagpart p))) do
+      (let ((x (subseq (caref grid (- p (complex 0 i))) 0 1)))
+	(when (not (equal x current))
+	  (progn (when (equal x "#")
+		   (incf count))
+		 (setf current x))))
+	   finally (return (oddp count))))
+   (let ((count 0)
+	 (current "."))
+     (loop for i from 1 below (- (imagpart p)) do
+       (let ((x (subseq (caref grid (+ p (complex 0 i))) 0 1)))
+	 (when (not (equal x current))
+	   (progn (when (equal x "#")
+		    (incf count))
+		  (setf current x))))
+	   finally (return (oddp count))))))
+
+
+
+(defun d18-con-neighbors (grid p)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (let ((in-grid-p (curry #'between-c (complex cols (- rows))))
+	  (con-comp nil)
+	  (frontier (list p)))
+      (loop while frontier do
+	(let* ((current (pop frontier))
+	       (new-pts (->> (list #C(1 0) #C(-1 0) #C(0 -1) #C(0 1))
+			  (mapcar (curry #'+ current))
+			  (remove-if-not in-grid-p)
+			  (remove-if-not #'(lambda (x)
+					     (equal "." (caref grid x))))
+			  (remove-if #'(lambda (x)
+					 (or (find x frontier)
+					     (find x con-comp)))))))
+	  (push current con-comp)
+	  (loop for newp in new-pts do
+		(push newp frontier))))
+      con-comp)))
+
+(defun d18-fill-neighbors (grid p)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (let ((in-grid-p (curry #'between-c (complex cols (- rows))))
+	  (frontier (list p)))
+      (loop while frontier do
+	(let* ((current (pop frontier))
+	       (new-pts (->> (list #C(1 0) #C(-1 0) #C(0 -1) #C(0 1))
+			  (mapcar (curry #'+ current))
+			  (remove-if-not in-grid-p)
+			  (remove-if-not #'(lambda (x)
+					     (equal "." (caref grid x)))))))
+	  (setf (caref grid current) "#")
+	  (format t "~a~%" (length frontier))
+	  (loop for newp in new-pts do
+	    (progn
+	      (setf (caref grid newp) "e")
+	      (push newp frontier)))))
+      grid)))
+
+
+(defun d18-dig-interior (grid)
+  (destructuring-bind (rows cols)
+      (array-dimensions grid)
+    (loop for i from 0 below rows do
+      (loop for j from 0 below cols do
+	(when (equal "." (aref grid i j))
+	  (when (d18-interior-p grid (complex j (- i)))
+	    (d18-fill-neighbors grid (complex j (- i)))))))
+    grid))
+
+(defun d18-1-eval-grid (grid)
+  (loop for j across (aops:flatten grid)
+	sum (if (str:contains? "#" j) 1 0)))
+
+
+      
+;; D19
+(defstruct (d19-Part (:conc-name part-))
+  x
+  m
+  a
+  s)
+
+(defun d19-parse-part-line (line)
+  (destructuring-bind (x m a s)
+      (->> line
+	(str:split ",")
+	(mapcar #'extract-number))
+    (make-d19-part :x x 
+		   :m m
+		   :a a
+		   :s s)))
+
+(defun d19-add-instr-to-dict (dict line)
+  (destructuring-bind (name instructions)
+      (str:split "{" line)
+    (setf (gethash name dict)
+	  (->> instructions
+	    (str:replace-all "}" "")
+	    (str:split ",")))))
+
+(defun d19-apply-rule (rules part)
+  (loop for rule in rules do
+    (format t "Rule: ~a~%" rule)
+    (if (str:containsp ":" rule)
+	(destructuring-bind (test result)
+	    (str:split ":" rule)
+	  (let ((sym (funcall (read-from-string
+			       (str:concat "part-"
+					   (subseq test 0 1)))
+			      part)))
+	    (when (funcall (read-from-string (subseq test 1 2))
+			   sym (extract-number test))
+	      (return result))))
+	(return rule))))
+
+(defun d19-load-input (filepath)
+  (let ((dict (make-hash-table :test #'equal))
+	(lines (read-input-file filepath)))
+    (loop for line in lines
+	  for i from 0 below (length lines) do
+	    (progn (when (equal line "")
+		     (return (values dict
+				     (mapcar #'d19-parse-part-line
+					     (nthcdr (1+ i) lines)))))
+		   (d19-add-instr-to-dict dict line)))))
+
+(defun d19-sum-part (part)
+  (+ (part-x part)
+     (part-m part)
+     (part-a part)
+     (part-s part)))
+
+(defun d19-eval-part (dict part start)
+  (let ((cur start))
+    (loop while (not (or (equal cur "A") (equal cur "R"))) do
+		(setf cur (d19-apply-rule (gethash cur dict) part)))
+    (if (equal cur "A")
+	(d19-sum-part part)
+	0)))
+
+(defun d19-1-solution (filepath)
+  (multiple-value-bind (dict parts)
+      (d19-load-input filepath)
+    (loop for part in parts
+	  sum (d19-eval-part dict part "in"))))
+				      
+(defstruct (d19-Part-range (:conc-name part-range-))
+  x
+  m
+  a
+  s)
+
+(defun d19-range-split (range cutoff dir)
+  (if (and (between cutoff (first range) (second range))
+	   (< (first range) (second range)))
+      (if (equal dir "<")
+	  (values (list (first range) (1- cutoff))
+		  (list cutoff (second range)))
+	  (values (list (1+ cutoff) (second range))
+		  (list (first range) cutoff)))
+      (if (equal dir "<")
+	  (if (< (second range) cutoff)
+	      (values range
+		      nil)
+	      (values nil
+		      range))
+	  (if (> (first range) cutoff)
+	      (values range
+		      nil)
+	      (values nil
+		      range)))))
+
+(defun d19-split-part-range (part-range str dir cutoff)
+  (destructuring-bind (y1 y2 y3)
+      (remove str '("x" "m" "s" "a") :test #'equal)
+    (multiple-value-bind (range1 range2)
+	(d19-range-split (funcall (read-from-string (str:concat "part-range-" str)) part-range)
+			 cutoff dir)
+      (let ((fn #'(lambda (n) (read-from-string (str:concat ":" n)))))
+	(values (make-d19-part-range (funcall fn y1) (funcall (read-from-string (str:concat "part-range-" y1))
+							      part-range)
+				     (funcall fn y2) (funcall (read-from-string (str:concat "part-range-" y2))
+							      part-range)
+				     (funcall fn y3) (funcall (read-from-string (str:concat "part-range-" y3))
+							      part-range)
+				     (funcall fn str) range1)
+		(make-d19-part-range (funcall fn y1) (funcall (read-from-string (str:concat "part-range-" y1))
+							      part-range)
+				     (funcall fn y2) (funcall (read-from-string (str:concat "part-range-" y2))
+							      part-range)
+				     (funcall fn y3) (funcall (read-from-string (str:concat "part-range-" y3))
+							      part-range)
+				     (funcall fn str) range2))))))
+
+(defun d19-apply-rule-range (rules part-range)
+  (let ((results nil)
+	(current part-range))
+    (loop for rule in rules do
+      ;;(format t "Rule: ~a~%" rule)
+      (if (str:containsp ":" rule)
+	  (destructuring-bind (test result)
+	      (str:split ":" rule)
+	    (let ((str (subseq test 0 1))
+		  (dir (subseq test 1 2))
+		  (cutoff (extract-number test)))
+	      (multiple-value-bind (true-range false-range)
+		  (d19-split-part-range current str dir cutoff)
+		(when true-range
+		  (push (list true-range result) results))
+		(if false-range
+		    (setf current false-range)
+		    (return results)))))
+	  (progn (push (list current rule) results)
+		 (return results))))))
+
+(defun d19-start-range ()
+  (make-d19-part-range :x (list 1 4000)
+		       :m (list 1 4000)
+		       :a (list 1 4000)
+		       :s (list 1 4000)))
+
+(defun d19-deduce-ranges (dict)
+  (let ((part-ranges (list (list (d19-start-range) "in")))
+	(accepted nil))
+    (loop while part-ranges do
+      (let* ((current (pop part-ranges))
+	     (part-range (first current))
+	     (str (second current)))
+	(if (equal str "A")
+	    (push part-range accepted)
+	    (unless (equal str "R")
+	      (let ((new-reses (d19-apply-rule-range (gethash str dict)
+						     part-range)))
+		(loop for r in new-reses do
+		  (push r part-ranges)))))))
+    accepted))
+
+(defun d19-eval-part-range (part-range)
+  (flet ((size (tuple) (- (1+ (second tuple)) (first tuple))))
+    (* (size (part-range-x part-range))
+       (size (part-range-m part-range))
+       (size (part-range-s part-range))
+       (size (part-range-a part-range)))))
+    
+(defun d19-2-solution (filepath)
+  (let ((dict (d19-load-input filepath)))
+    (->> dict
+      d19-deduce-ranges
+      (mapcar #'d19-eval-part-range)
+      (reduce #'+))))
+	      
+
+  
